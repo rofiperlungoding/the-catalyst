@@ -29,7 +29,7 @@ function App() {
   });
   const [toasts, setToasts] = useState<ToastData[]>([]);
   const lastAlertTimeRef = useRef<number>(0);
-  const liveTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const liveTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     localStorage.setItem("catalyst_settings", JSON.stringify(alertSettings));

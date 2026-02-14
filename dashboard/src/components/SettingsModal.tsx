@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { cn } from "../lib/utils";  // Assuming we can use cn, otherwise strict strings
+
 
 type SettingsModalProps = {
     isOpen: boolean;
