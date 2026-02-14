@@ -1,30 +1,33 @@
 /*
-  THE CATALYST — FIRMWARE v0.2.0
+  THE CATALYST — FIRMWARE v0.2.1
   ---------------------------------------------------
   Hardware: ESP32 WROOM, 3.5" TFT (ILI9488), XPT2046 Touch,
             LCD 16x2 I2C, DHT22
   Cloud:    Supabase (PostgreSQL)
 
-  DISPLAY:  VSPI (default) — pins configured in User_Setup.h
-  TOUCH:    HSPI (dedicated) — T_CLK=25, T_CS=33, T_DIN=26, T_DO=27, T_IRQ=14
+  DISPLAY + TOUCH: Both on VSPI — managed by TFT_eSPI
+  Touch CS on GPIO 33 (set TOUCH_CS 33 in User_Setup.h)
+
+  USER_SETUP.H MUST HAVE:
+    #define TOUCH_CS 33
 
   REQUIRED LIBRARIES:
-  1. TFT_eSPI (Bodmer)                    — display driver
-  2. XPT2046_Touchscreen (Paul Stoffregen) — touch input
-  3. DHT sensor library (Adafruit)         — temperature/humidity
-  4. LiquidCrystal I2C (Frank de Brabander)— secondary LCD
-  5. ArduinoJson (Benoit Blanchon) v7      — JSON handling
+  1. TFT_eSPI (Bodmer)                     — display + touch driver
+  2. DHT sensor library (Adafruit)         — temperature/humidity
+  3. LiquidCrystal I2C (Frank de Brabander)— secondary LCD
+  4. ArduinoJson (Benoit Blanchon) v7      — JSON handling
+
+  NOTE: XPT2046_Touchscreen library is NOT needed.
+        TFT_eSPI handles touch natively via shared SPI bus.
 */
 
 #include <ArduinoJson.h>
 #include <DHT.h>
 #include <HTTPClient.h>
 #include <LiquidCrystal_I2C.h>
-#include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
-#include <XPT2046_Touchscreen.h>
 #include <time.h>
 
 // =============================================================
@@ -45,24 +48,11 @@
   "Fub24iLCJpYXQiOjE3NzEwMjMyMjIsImV4cCI6MjA4NjU5OTIyMn0.Fz6HjRgwfq2OYWRcxz_"  \
   "MGcurVhhsAQPKwvw9KjySiXY"
 
-// --- PIN DEFINITIONS ---
+// --- PINS ---
 #define DHT_PIN 13
 #define DHT_TYPE DHT22
 
-// --- TOUCHSCREEN PINS (HSPI) ---
-#define TOUCH_CLK 25
-#define TOUCH_CS 33
-#define TOUCH_MOSI 26
-#define TOUCH_MISO 27
-#define TOUCH_IRQ 14
-
-// --- TOUCH CALIBRATION (3.5" standard, landscape) ---
-#define TOUCH_MIN_X 300
-#define TOUCH_MAX_X 3800
-#define TOUCH_MIN_Y 200
-#define TOUCH_MAX_Y 3750
-
-// Screen dimensions (landscape)
+// Screen dimensions (landscape, rotation 1)
 #define SCREEN_W 480
 #define SCREEN_H 320
 
@@ -76,7 +66,7 @@
 #define LCD_UPDATE_INTERVAL 2000
 #define SUPABASE_SYNC_INTERVAL 30000
 #define HEALTH_REPORT_INTERVAL 60000
-#define TOUCH_DEBOUNCE_MS 250 // Anti-jitter for touch
+#define TOUCH_DEBOUNCE_MS 300
 
 // --- NTP ---
 #define NTP_SERVER "pool.ntp.org"
@@ -85,23 +75,32 @@
 
 // --- DEVICE ---
 #define DEVICE_NAME "The Catalyst"
-#define FIRMWARE_VERSION "0.2.0"
+#define FIRMWARE_VERSION "0.2.1"
+
+// =============================================================
+// TOUCH CALIBRATION
+// =============================================================
+// These values are set by tft.calibrateTouch() or manually.
+// Format: { x_min, x_max, y_min, y_max, rotation }
+// Run the touch test at boot to get your values, then paste here.
+uint16_t calData[5] = {300, 3600, 300, 3600, 7};
+bool calibrated = false;
 
 // =============================================================
 // COLOR PALETTE (Dark Theme)
 // =============================================================
-#define C_BG 0x0000         // #000000 Black
-#define C_FG 0xFFFF         // #FFFFFF White
-#define C_PRIMARY 0x07E0    // #00FF88 Green
-#define C_ACCENT 0xF81F     // #F43F5E Pink
-#define C_WARN 0xFD20       // #FF8800 Orange
-#define C_GRID 0x18E3       // #1A1A2E Dark grey
-#define C_CARD_BG 0x10A2    // #111122 Card background
-#define C_BTN_BG 0x2124     // #222244 Button bg
-#define C_BTN_ACTIVE 0x3186 // #333366 Button pressed
-#define C_TEXT_DIM 0x8410   // #808080 Dimmed text
-#define C_BLUE 0x54BF       // #3399FF Blue accent
-#define C_CYAN 0x07FF       // #00FFFF Cyan
+#define C_BG 0x0000         // Black
+#define C_FG 0xFFFF         // White
+#define C_PRIMARY 0x07E0    // Green
+#define C_ACCENT 0xF81F     // Pink
+#define C_WARN 0xFD20       // Orange
+#define C_GRID 0x18E3       // Dark grey
+#define C_CARD_BG 0x10A2    // Card background
+#define C_BTN_BG 0x2124     // Button bg
+#define C_BTN_ACTIVE 0x3186 // Button pressed
+#define C_TEXT_DIM 0x8410   // Dimmed text
+#define C_BLUE 0x54BF       // Blue accent
+#define C_CYAN 0x07FF       // Cyan
 
 // =============================================================
 // UI MODES
@@ -115,7 +114,7 @@ struct Button {
   int16_t x, y, w, h;
   uint16_t color;
   const char *label;
-  const char *icon; // Single char icon
+  const char *icon;
 };
 
 // =============================================================
@@ -124,11 +123,6 @@ struct Button {
 TFT_eSPI tft = TFT_eSPI();
 DHT dht(DHT_PIN, DHT_TYPE);
 LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLS, LCD_ROWS);
-
-// Dedicated HSPI bus for touchscreen
-SPIClass hspi(HSPI);
-// NO IRQ pin — use poll mode (more reliable on ESP32 HSPI)
-XPT2046_Touchscreen ts(TOUCH_CS);
 
 // =============================================================
 // GLOBAL STATE
@@ -145,11 +139,11 @@ unsigned long last_sensor_read = 0;
 unsigned long last_supabase_sync = 0;
 unsigned long last_health_report = 0;
 unsigned long last_lcd_update = 0;
-unsigned long last_touch_time = 0; // Debounce
+unsigned long last_touch_time = 0;
 
 // UI
 UIMode currentMode = MODE_DASHBOARD;
-bool ui_needs_redraw = true; // Only redraw when state changes
+bool ui_needs_redraw = true;
 
 // History buffer for mini-graph (last 20 readings)
 #define HISTORY_SIZE 20
@@ -175,18 +169,18 @@ Button menuButton = {400, 270, 70, 40, C_ACCENT, "MENU", ">"};
 void setup() {
   Serial.begin(115200);
   Serial.println("\n=============================");
-  Serial.println("  THE CATALYST v0.2.0");
-  Serial.println("  Touchscreen Edition");
+  Serial.println("  THE CATALYST v0.2.1");
+  Serial.println("  Native Touch Edition");
   Serial.println("=============================\n");
 
-  // 1. Init Display
+  // 1. Init Display + Touch (both via TFT_eSPI)
   initDisplay();
 
-  // 2. Init Touchscreen on HSPI
-  initTouch();
-
-  // 3. Init Sensor
+  // 2. Init Sensor
   initSensor();
+
+  // 3. Touch calibration test
+  touchCalibrationTest();
 
   // 4. Connect WiFi
   connectToWiFi();
@@ -199,9 +193,6 @@ void setup() {
 
   // Draw initial dashboard
   ui_needs_redraw = true;
-
-  // 6. Touch Hardware Test (5 seconds)
-  touchTest();
 }
 
 // =============================================================
@@ -217,14 +208,12 @@ void loop() {
   if (now - last_sensor_read > SENSOR_READ_INTERVAL) {
     readSensor();
     last_sensor_read = now;
-
-    // Trigger dashboard redraw only if we're on the dashboard
     if (currentMode == MODE_DASHBOARD) {
       ui_needs_redraw = true;
     }
   }
 
-  // 3. Update LCD (independent of TFT)
+  // 3. Update LCD
   if (now - last_lcd_update > LCD_UPDATE_INTERVAL) {
     updateLCD();
     last_lcd_update = now;
@@ -265,14 +254,17 @@ void initDisplay() {
   tft.setRotation(1); // Landscape 480x320
   tft.fillScreen(C_BG);
 
+  // Apply touch calibration
+  tft.setTouch(calData);
+
   // Splash
   tft.setTextColor(C_PRIMARY, C_BG);
   tft.setTextSize(1);
   tft.drawCentreString("THE CATALYST", 240, 100, 4);
   tft.setTextColor(C_TEXT_DIM, C_BG);
-  tft.drawCentreString("v0.2.0 // Touchscreen Edition", 240, 140, 2);
+  tft.drawCentreString("v0.2.1 // Native Touch", 240, 140, 2);
   tft.setTextColor(C_FG, C_BG);
-  tft.drawCentreString("Initializing Systems...", 240, 180, 2);
+  tft.drawCentreString("Initializing...", 240, 180, 2);
 
   // LCD
   lcd.init();
@@ -280,155 +272,190 @@ void initDisplay() {
   lcd.setCursor(0, 0);
   lcd.print("THE CATALYST");
   lcd.setCursor(0, 1);
-  lcd.print("v0.2.0 TOUCH");
+  lcd.print("v0.2.1 TOUCH");
+
+  Serial.println("[DISPLAY] TFT + Touch init OK");
+  Serial.println("[DISPLAY] Touch CS = GPIO 33 (via User_Setup.h)");
 }
 
-void initTouch() {
-  Serial.println("[TOUCH] Init HSPI bus...");
-
-  // Start HSPI with custom pins — DO NOT pass CS here!
-  hspi.begin(TOUCH_CLK, TOUCH_MISO, TOUCH_MOSI);
-
-  // Init touchscreen on HSPI (poll mode, no IRQ)
-  ts.begin(hspi);
-  ts.setRotation(1); // Match TFT rotation
-
-  Serial.println("[TOUCH] XPT2046 Ready (poll mode)");
+void initSensor() {
+  dht.begin();
+  delay(2000);
 }
 
-// Visual touch test — runs for 5 seconds during boot
-void touchTest() {
+// =============================================================
+// TOUCH CALIBRATION TEST
+// =============================================================
+// Runs at boot for 8 seconds. Touch the screen to see dots.
+// If dots appear where you touch, calibration is good.
+// If not, run tft.calibrateTouch() to get new values.
+
+void touchCalibrationTest() {
   tft.fillScreen(C_BG);
   tft.setTextColor(C_FG, C_BG);
   tft.setTextSize(1);
   tft.drawCentreString("TOUCH TEST", 240, 20, 4);
   tft.setTextColor(C_TEXT_DIM, C_BG);
   tft.drawCentreString("Touch the screen anywhere", 240, 60, 2);
-  tft.drawCentreString("Dots should appear where you touch", 240, 80, 2);
-  tft.setTextColor(C_WARN, C_BG);
-  tft.drawCentreString("Auto-skip in 5 seconds...", 240, 290, 2);
+  tft.drawCentreString("Green dots should follow your finger", 240, 80, 2);
 
-  // Draw crosshair targets
-  tft.drawCircle(60, 160, 15, C_GRID);
-  tft.drawCircle(240, 160, 15, C_GRID);
-  tft.drawCircle(420, 160, 15, C_GRID);
+  // Draw target circles
+  tft.drawCircle(60, 160, 20, C_GRID);
+  tft.drawCircle(240, 160, 20, C_GRID);
+  tft.drawCircle(420, 160, 20, C_GRID);
+
+  tft.setTextColor(C_WARN, C_BG);
+  tft.drawCentreString("Skipping in 8 seconds...", 240, 290, 2);
+
+  // "CALIBRATE" button in bottom-left
+  tft.fillRoundRect(10, 280, 140, 35, 8, C_ACCENT);
+  tft.setTextColor(C_FG, C_ACCENT);
+  tft.drawCentreString("CALIBRATE", 80, 290, 2);
 
   unsigned long start = millis();
   int touchCount = 0;
+  uint16_t tx, ty;
 
-  while (millis() - start < 5000) {
-    if (ts.touched()) {
-      TS_Point raw = ts.getPoint();
+  while (millis() - start < 8000) {
+    if (tft.getTouch(&tx, &ty)) {
+      // Check if CALIBRATE button pressed
+      if (tx < 150 && ty > 270) {
+        runCalibration();
+        return; // Restart test after calibration
+      }
 
-      // Map raw to screen
-      int16_t px = map(raw.x, TOUCH_MIN_X, TOUCH_MAX_X, 0, SCREEN_W);
-      int16_t py = map(raw.y, TOUCH_MIN_Y, TOUCH_MAX_Y, 0, SCREEN_H);
-      px = constrain(px, 0, SCREEN_W - 1);
-      py = constrain(py, 0, SCREEN_H - 1);
-
-      // Draw dot where touched
-      tft.fillCircle(px, py, 5, C_PRIMARY);
+      tft.fillCircle(tx, ty, 5, C_PRIMARY);
       touchCount++;
 
-      Serial.printf("[TEST] Raw(%d,%d) z=%d → Pixel(%d,%d)\n", raw.x, raw.y,
-                    raw.z, px, py);
+      Serial.printf("[TOUCH] Screen(%d, %d) — touch #%d\n", tx, ty, touchCount);
 
-      // Show touch info on screen
-      tft.fillRect(0, 110, 480, 20, C_BG);
+      // Show coordinates
+      tft.fillRect(0, 110, 480, 25, C_BG);
       tft.setTextColor(C_PRIMARY, C_BG);
-      char info[50];
-      snprintf(info, sizeof(info), "TOUCH #%d  Raw(%d,%d) Px(%d,%d)",
-               touchCount, raw.x, raw.y, px, py);
-      tft.drawCentreString(info, 240, 112, 2);
+      char buf[40];
+      snprintf(buf, sizeof(buf), "OK! Touch #%d at (%d, %d)", touchCount, tx,
+               ty);
+      tft.drawCentreString(buf, 240, 115, 2);
 
-      delay(50); // Small delay to not flood
+      delay(30);
     }
   }
 
-  // Show result
+  // Result
   tft.fillScreen(C_BG);
   if (touchCount > 0) {
     tft.setTextColor(C_PRIMARY, C_BG);
-    tft.drawCentreString("TOUCH OK!", 240, 140, 4);
+    tft.drawCentreString("TOUCH WORKING!", 240, 130, 4);
     char msg[30];
     snprintf(msg, sizeof(msg), "%d touches detected", touchCount);
     tft.setTextColor(C_TEXT_DIM, C_BG);
-    tft.drawCentreString(msg, 240, 180, 2);
+    tft.drawCentreString(msg, 240, 175, 2);
+    calibrated = true;
   } else {
     tft.setTextColor(C_WARN, C_BG);
-    tft.drawCentreString("NO TOUCH DETECTED", 240, 130, 4);
+    tft.drawCentreString("NO TOUCH DETECTED", 240, 110, 4);
     tft.setTextColor(C_TEXT_DIM, C_BG);
-    tft.drawCentreString("Check wiring:", 240, 170, 2);
-    tft.drawCentreString("CLK=25 CS=33 DIN=26 DO=27", 240, 195, 2);
+    tft.drawCentreString("Check User_Setup.h:", 240, 160, 2);
+    tft.setTextColor(C_FG, C_BG);
+    tft.drawCentreString("#define TOUCH_CS 33", 240, 185, 2);
+    tft.setTextColor(C_TEXT_DIM, C_BG);
+    tft.drawCentreString("Then re-upload firmware", 240, 215, 2);
   }
-  Serial.printf("[TEST] Result: %d touches in 5 seconds\n", touchCount);
+  Serial.printf("[TOUCH] Test result: %d touches\n", touchCount);
   delay(2000);
 }
 
-void initSensor() {
-  dht.begin();
-  delay(2000); // DHT22 startup
+void runCalibration() {
+  Serial.println("[TOUCH] Starting calibration...");
+  tft.fillScreen(C_BG);
+  tft.setTextColor(C_FG, C_BG);
+  tft.drawCentreString("CALIBRATION", 240, 20, 4);
+  tft.setTextColor(C_TEXT_DIM, C_BG);
+  tft.drawCentreString("Touch the arrow markers as they appear", 240, 60, 2);
+  delay(1500);
+
+  // TFT_eSPI built-in calibration — shows 4 corner markers
+  tft.calibrateTouch(calData, C_PRIMARY, C_BG, 20);
+
+  // Save and apply
+  tft.setTouch(calData);
+  calibrated = true;
+
+  Serial.printf("[TOUCH] Calibration: {%d, %d, %d, %d, %d}\n", calData[0],
+                calData[1], calData[2], calData[3], calData[4]);
+
+  // Show the values so user can hardcode them
+  tft.fillScreen(C_BG);
+  tft.setTextColor(C_PRIMARY, C_BG);
+  tft.drawCentreString("CALIBRATION DONE!", 240, 60, 4);
+  tft.setTextColor(C_TEXT_DIM, C_BG);
+  tft.drawCentreString("Copy these values to your firmware:", 240, 110, 2);
+
+  char valBuf[60];
+  snprintf(valBuf, sizeof(valBuf), "{ %d, %d, %d, %d, %d }", calData[0],
+           calData[1], calData[2], calData[3], calData[4]);
+  tft.setTextColor(C_FG, C_BG);
+  tft.setTextSize(1);
+  tft.drawCentreString(valBuf, 240, 150, 4);
+
+  tft.setTextColor(C_TEXT_DIM, C_BG);
+  tft.drawCentreString("Paste into: uint16_t calData[5] = ...", 240, 200, 2);
+  tft.drawCentreString("Continuing in 5 seconds...", 240, 280, 2);
+
+  delay(5000);
 }
 
 // =============================================================
-// TOUCH INPUT
+// TOUCH INPUT (using TFT_eSPI native touch)
 // =============================================================
 
 void checkTouch() {
-  if (!ts.touched())
+  uint16_t tx, ty;
+
+  // tft.getTouch() returns true if screen is being touched
+  // tx, ty are already in screen coordinates (pixel space)
+  if (!tft.getTouch(&tx, &ty))
     return;
 
+  // Debounce
   unsigned long now = millis();
-
-  // Debounce: ignore if too soon after last touch
   if (now - last_touch_time < TOUCH_DEBOUNCE_MS)
     return;
   last_touch_time = now;
 
-  // Read raw coordinates
-  TS_Point raw = ts.getPoint();
+  Serial.printf("[TOUCH] (%d, %d) mode=%s\n", tx, ty,
+                currentMode == MODE_DASHBOARD ? "DASH" : "CTRL");
 
-  // Map raw (0-4095) → screen pixels
-  int16_t px = map(raw.x, TOUCH_MIN_X, TOUCH_MAX_X, 0, SCREEN_W);
-  int16_t py = map(raw.y, TOUCH_MIN_Y, TOUCH_MAX_Y, 0, SCREEN_H);
-
-  // Clamp to screen bounds
-  px = constrain(px, 0, SCREEN_W - 1);
-  py = constrain(py, 0, SCREEN_H - 1);
-
-  Serial.printf("[TOUCH] Raw(%d,%d) → Pixel(%d,%d)\n", raw.x, raw.y, px, py);
-
-  // Route touch based on current mode
+  // Route based on current mode
   if (currentMode == MODE_DASHBOARD) {
-    handleDashboardTouch(px, py);
+    handleDashboardTouch(tx, ty);
   } else {
-    handleControlPanelTouch(px, py);
+    handleControlPanelTouch(tx, ty);
   }
 }
 
-bool isInsideButton(int16_t px, int16_t py, Button &btn) {
-  return (px >= btn.x && px <= btn.x + btn.w && py >= btn.y &&
-          py <= btn.y + btn.h);
+bool isInsideButton(uint16_t tx, uint16_t ty, Button &btn) {
+  return (tx >= btn.x && tx <= btn.x + btn.w && ty >= btn.y &&
+          ty <= btn.y + btn.h);
 }
 
-void handleDashboardTouch(int16_t px, int16_t py) {
-  if (isInsideButton(px, py, menuButton)) {
-    Serial.println("[UI] MENU pressed → Control Panel");
+void handleDashboardTouch(uint16_t tx, uint16_t ty) {
+  if (isInsideButton(tx, ty, menuButton)) {
+    Serial.println("[UI] MENU -> Control Panel");
     currentMode = MODE_CONTROL_PANEL;
     ui_needs_redraw = true;
   }
 }
 
-void handleControlPanelTouch(int16_t px, int16_t py) {
+void handleControlPanelTouch(uint16_t tx, uint16_t ty) {
   for (int i = 0; i < NUM_BUTTONS; i++) {
-    if (isInsideButton(px, py, controlButtons[i])) {
+    if (isInsideButton(tx, ty, controlButtons[i])) {
 
-      // Flash the button (visual feedback)
       flashButton(controlButtons[i]);
 
       switch (i) {
       case 0: // SYNC DATA
-        Serial.println("[UI] SYNC DATA pressed");
+        Serial.println("[UI] SYNC DATA");
         showStatusOverlay("Syncing...", C_BLUE);
         sendSensorData();
         showStatusOverlay("Synced!", C_PRIMARY);
@@ -437,7 +464,7 @@ void handleControlPanelTouch(int16_t px, int16_t py) {
         break;
 
       case 1: // AI INSIGHT
-        Serial.println("[UI] AI INSIGHT pressed");
+        Serial.println("[UI] AI INSIGHT");
         showStatusOverlay("Analyzing...", C_ACCENT);
         triggerAIInsight();
         delay(600);
@@ -446,19 +473,19 @@ void handleControlPanelTouch(int16_t px, int16_t py) {
 
       case 2: // FOCUS MODE
         focus_mode = !focus_mode;
-        Serial.printf("[UI] Focus Mode: %s\n", focus_mode ? "ON" : "OFF");
+        Serial.printf("[UI] Focus: %s\n", focus_mode ? "ON" : "OFF");
         showStatusOverlay(focus_mode ? "Focus: ON" : "Focus: OFF", C_PRIMARY);
         delay(600);
         ui_needs_redraw = true;
         break;
 
       case 3: // BACK
-        Serial.println("[UI] BACK pressed → Dashboard");
+        Serial.println("[UI] BACK -> Dashboard");
         currentMode = MODE_DASHBOARD;
         ui_needs_redraw = true;
         break;
       }
-      return; // Only handle first matching button
+      return;
     }
   }
 }
@@ -480,21 +507,19 @@ void drawDashboard() {
     return;
   }
 
-  // ── Header Bar ──
+  // Header Bar
   tft.fillRect(0, 0, 480, 32, C_GRID);
   tft.setTextColor(C_FG, C_GRID);
   tft.setTextSize(1);
   tft.drawString("THE CATALYST", 10, 8, 2);
 
-  // Status indicators
   tft.setTextColor(wifi_connected ? C_PRIMARY : C_WARN, C_GRID);
   tft.drawString(wifi_connected ? "ONLINE" : "OFFLINE", 380, 8, 2);
 
-  // ── Temperature Card ──
+  // Temperature Card
   drawCard(10, 42, 225, 100, "TEMPERATURE", C_PRIMARY);
   tft.setTextColor(C_PRIMARY, C_CARD_BG);
   tft.setTextSize(2);
-  // Use Font 4 (26px) — Font 7 is 48px and overflows the card
   char tempBuf[10];
   snprintf(tempBuf, sizeof(tempBuf), "%.1f", current_temp);
   tft.drawString(tempBuf, 30, 80, 4);
@@ -502,7 +527,7 @@ void drawDashboard() {
   tft.setTextColor(C_TEXT_DIM, C_CARD_BG);
   tft.drawString("C", 180, 90, 4);
 
-  // ── Humidity Card ──
+  // Humidity Card
   drawCard(245, 42, 225, 100, "HUMIDITY", C_CYAN);
   tft.setTextColor(C_CYAN, C_CARD_BG);
   tft.setTextSize(2);
@@ -513,16 +538,15 @@ void drawDashboard() {
   tft.setTextColor(C_TEXT_DIM, C_CARD_BG);
   tft.drawString("%", 415, 90, 4);
 
-  // ── Mini Graph ──
+  // Mini Graph
   drawCard(10, 152, 460, 105, "HISTORY (LAST 20)", C_TEXT_DIM);
   drawMiniGraph(20, 172, 440, 80);
 
-  // ── Status Footer ──
+  // Status Footer
   tft.fillRect(0, 264, 480, 24, C_GRID);
   tft.setTextColor(C_TEXT_DIM, C_GRID);
   tft.setTextSize(1);
 
-  // Uptime
   unsigned long secs = millis() / 1000;
   int hrs = secs / 3600;
   int mins = (secs % 3600) / 60;
@@ -530,12 +554,11 @@ void drawDashboard() {
   snprintf(uptimeStr, sizeof(uptimeStr), "UP %02d:%02d", hrs, mins);
   tft.drawString(uptimeStr, 10, 268, 2);
 
-  // Free heap
   char heapStr[20];
   snprintf(heapStr, sizeof(heapStr), "MEM %dKB", ESP.getFreeHeap() / 1024);
   tft.drawString(heapStr, 180, 268, 2);
 
-  // ── MENU Button (floating) ──
+  // MENU Button
   tft.fillRoundRect(menuButton.x, menuButton.y, menuButton.w, menuButton.h, 10,
                     C_ACCENT);
   tft.setTextColor(C_FG, C_ACCENT);
@@ -544,7 +567,6 @@ void drawDashboard() {
 }
 
 void drawFocusDashboard() {
-  // Minimal: Just big numbers, nothing else
   tft.fillScreen(C_BG);
 
   tft.setTextColor(C_TEXT_DIM, C_BG);
@@ -565,7 +587,7 @@ void drawFocusDashboard() {
   snprintf(focusHumBuf, sizeof(focusHumBuf), "%.0f %%", current_humid);
   tft.drawCentreString(focusHumBuf, 240, 205, 4);
 
-  // MENU button still visible
+  // MENU button
   tft.fillRoundRect(menuButton.x, menuButton.y, menuButton.w, menuButton.h, 10,
                     C_ACCENT);
   tft.setTextColor(C_FG, C_ACCENT);
@@ -588,32 +610,29 @@ void drawControlPanel() {
   tft.setTextColor(C_TEXT_DIM, C_GRID);
   tft.drawString("TAP AN ACTION", 340, 8, 2);
 
-  // Draw all buttons
+  // Draw buttons
   for (int i = 0; i < NUM_BUTTONS; i++) {
-    drawButton(controlButtons[i],
-               i == 2 && focus_mode); // Highlight focus if ON
+    drawButton(controlButtons[i], i == 2 && focus_mode);
   }
 
-  // Footer info
+  // Footer
   tft.setTextColor(C_TEXT_DIM, C_BG);
-  tft.drawString("v0.2.0 // Touch Active", 10, 298, 1);
+  tft.drawString("v0.2.1 // Touch Active", 10, 298, 1);
 }
 
 void drawButton(Button &btn, bool highlight) {
   uint16_t bg = highlight ? C_PRIMARY : btn.color;
 
   tft.fillRoundRect(btn.x, btn.y, btn.w, btn.h, 12, bg);
-
-  // Button border
   tft.drawRoundRect(btn.x, btn.y, btn.w, btn.h, 12,
                     highlight ? C_FG : tft.color565(60, 60, 80));
 
-  // Icon (large, centered top)
+  // Icon
   tft.setTextColor(C_FG, bg);
   tft.setTextSize(2);
   tft.drawCentreString(btn.icon, btn.x + btn.w / 2, btn.y + 25, 4);
 
-  // Label (centered bottom)
+  // Label
   tft.setTextSize(1);
   tft.drawCentreString(btn.label, btn.x + btn.w / 2, btn.y + btn.h - 28, 2);
 }
@@ -623,7 +642,6 @@ void drawCard(int x, int y, int w, int h, const char *title,
   tft.fillRoundRect(x, y, w, h, 8, C_CARD_BG);
   tft.drawRoundRect(x, y, w, h, 8, accentColor);
 
-  // Title pill
   int titleLen = strlen(title);
   int titleW = titleLen * 7 + 12;
   tft.fillRoundRect(x + 8, y + 4, titleW, 16, 4, accentColor);
@@ -643,7 +661,7 @@ void showStatusOverlay(const char *message, uint16_t color) {
 }
 
 // =============================================================
-// MINI GRAPH (Temperature history sparkline)
+// MINI GRAPH
 // =============================================================
 
 void drawMiniGraph(int x, int y, int w, int h) {
@@ -653,7 +671,6 @@ void drawMiniGraph(int x, int y, int w, int h) {
     return;
   }
 
-  // Find min/max for scaling
   float minVal = 999, maxVal = -999;
   for (int i = 0; i < history_count; i++) {
     if (temp_history[i] < minVal)
@@ -662,21 +679,20 @@ void drawMiniGraph(int x, int y, int w, int h) {
       maxVal = temp_history[i];
   }
 
-  // Add some padding
   float range = maxVal - minVal;
   if (range < 1.0)
-    range = 1.0; // Avoid divide-by-zero
+    range = 1.0;
   minVal -= range * 0.1;
   maxVal += range * 0.1;
   range = maxVal - minVal;
 
-  // Draw gridlines
+  // Gridlines
   for (int i = 0; i <= 4; i++) {
     int gy = y + (h * i / 4);
     tft.drawFastHLine(x, gy, w, C_GRID);
   }
 
-  // Plot temperature line
+  // Plot temperature
   float stepX = (float)w / (HISTORY_SIZE - 1);
   for (int i = 1; i < history_count; i++) {
     int idx0 =
@@ -690,7 +706,7 @@ void drawMiniGraph(int x, int y, int w, int h) {
     int y1 = y + h - (int)(((temp_history[idx1] - minVal) / range) * h);
 
     tft.drawLine(x0, y0, x1, y1, C_PRIMARY);
-    tft.drawLine(x0, y0 + 1, x1, y1 + 1, C_PRIMARY); // Thicker
+    tft.drawLine(x0, y0 + 1, x1, y1 + 1, C_PRIMARY);
   }
 
   // Min/Max labels
@@ -713,22 +729,20 @@ void readSensor() {
 
   if (isnan(t) || isnan(h)) {
     Serial.println("[DHT] Read failed!");
-    lcd.setCursor(15, 0);
-    lcd.print("E");
     return;
   }
 
   current_temp = t;
   current_humid = h;
 
-  // Push to history ring buffer
+  // Push to ring buffer
   temp_history[history_index] = t;
   humid_history[history_index] = h;
   history_index = (history_index + 1) % HISTORY_SIZE;
   if (history_count < HISTORY_SIZE)
     history_count++;
 
-  Serial.printf("[DHT] T:%.1fC  H:%.1f%%\n", current_temp, current_humid);
+  Serial.printf("[DHT] T:%.1fC H:%.1f%%\n", current_temp, current_humid);
 }
 
 // =============================================================
@@ -740,11 +754,7 @@ void updateLCD() {
   lcd.printf("T:%.1fC H:%.1f%%  ", current_temp, current_humid);
 
   lcd.setCursor(0, 1);
-  if (wifi_connected) {
-    lcd.print("Cloud: ONLINE   ");
-  } else {
-    lcd.print("Cloud: OFFLINE  ");
-  }
+  lcd.print(wifi_connected ? "Cloud: ONLINE   " : "Cloud: OFFLINE  ");
 }
 
 // =============================================================
@@ -766,7 +776,6 @@ void connectToWiFi() {
     delay(WIFI_RETRY_DELAY);
     Serial.print(".");
 
-    // Progress bar
     int barW = map(attempts, 0, WIFI_MAX_RETRIES, 0, 400);
     tft.fillRect(40, 70, barW, 8, C_PRIMARY);
     tft.drawRect(40, 70, 400, 8, C_GRID);
@@ -776,8 +785,7 @@ void connectToWiFi() {
   if (WiFi.status() == WL_CONNECTED) {
     wifi_connected = true;
     mac_address = WiFi.macAddress();
-    Serial.printf("\nWiFi Connected! IP: %s\n",
-                  WiFi.localIP().toString().c_str());
+    Serial.printf("\nWiFi OK! IP: %s\n", WiFi.localIP().toString().c_str());
 
     tft.setTextColor(C_PRIMARY, C_BG);
     tft.drawString("CONNECTED", 10, 100, 4);
@@ -796,7 +804,7 @@ void syncTime() {
   configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
-    Serial.println("[NTP] Failed to obtain time");
+    Serial.println("[NTP] Failed");
     return;
   }
   Serial.println(&timeinfo, "[NTP] %A, %B %d %Y %H:%M:%S");
@@ -837,7 +845,7 @@ String supabaseRequest(String endpoint, String method, String payload) {
     response = http.getString();
     Serial.printf("[HTTP %s] %d\n", method.c_str(), httpCode);
   } else {
-    Serial.printf("[HTTP %s] ERROR: %s\n", method.c_str(),
+    Serial.printf("[HTTP %s] ERR: %s\n", method.c_str(),
                   http.errorToString(httpCode).c_str());
   }
 
@@ -846,7 +854,7 @@ String supabaseRequest(String endpoint, String method, String payload) {
 }
 
 void registerDevice() {
-  Serial.println("[CLOUD] Registering Device...");
+  Serial.println("[CLOUD] Registering...");
 
   String query =
       "/rest/v1/devices?mac_address=eq." + mac_address + "&select=id";
@@ -857,16 +865,15 @@ void registerDevice() {
 
   if (doc.size() > 0) {
     device_id = doc[0]["id"].as<String>();
-    Serial.println("[CLOUD] Device Found: " + device_id);
+    Serial.println("[CLOUD] Found: " + device_id);
 
     String payload = "{\"last_seen_at\": \"now()\", \"status\": \"online\", "
                      "\"ip_address\": \"" +
                      WiFi.localIP().toString() +
                      "\", \"firmware_version\": \"" + FIRMWARE_VERSION + "\"}";
     supabaseRequest("/rest/v1/devices?id=eq." + device_id, "PATCH", payload);
-
   } else {
-    Serial.println("[CLOUD] Creating New Device...");
+    Serial.println("[CLOUD] Creating new device...");
     String payload = "{";
     payload += "\"mac_address\": \"" + mac_address + "\",";
     payload += "\"device_name\": \"The Catalyst ESP32\",";
@@ -876,13 +883,11 @@ void registerDevice() {
     payload += "\"ip_address\": \"" + WiFi.localIP().toString() + "\"";
     payload += "}";
 
-    String insertResponse =
-        supabaseRequest("/rest/v1/devices", "POST", payload);
-
-    deserializeJson(doc, insertResponse);
+    String res = supabaseRequest("/rest/v1/devices", "POST", payload);
+    deserializeJson(doc, res);
     if (doc.size() > 0) {
       device_id = doc[0]["id"].as<String>();
-      Serial.println("[CLOUD] New Device ID: " + device_id);
+      Serial.println("[CLOUD] New ID: " + device_id);
     }
   }
 }
@@ -901,8 +906,6 @@ void sendSensorData() {
 
   String payload;
   serializeJson(doc, payload);
-
-  Serial.println("[CLOUD] Sync: " + payload);
   supabaseRequest("/rest/v1/sensor_readings", "POST", payload);
 }
 
@@ -919,38 +922,20 @@ void sendHealthMetrics() {
 
   String payload;
   serializeJson(doc, payload);
-
   supabaseRequest("/rest/v1/device_health_metrics", "POST", payload);
 }
 
 // =============================================================
-// AI INSIGHT (Placeholder — triggers cloud analysis)
+// AI INSIGHT (Placeholder)
 // =============================================================
 
 void triggerAIInsight() {
-  Serial.println("[AI] Triggering insight analysis...");
+  Serial.println("[AI] Insight request...");
 
-  // For now: send a snapshot and log it
-  // You can expand this to call a Supabase Edge Function
   if (device_id == "") {
     showStatusOverlay("No Device ID", C_WARN);
     return;
   }
-
-  // Send current data as insight request
-  JsonDocument doc;
-  doc["device_id"] = device_id;
-  doc["temperature"] = current_temp;
-  doc["humidity"] = current_humid;
-  doc["request"] = "insight";
-
-  String payload;
-  serializeJson(doc, payload);
-
-  Serial.println("[AI] Payload: " + payload);
-
-  // TODO: Replace with actual Edge Function call
-  // supabaseRequest("/functions/v1/ai-insight", "POST", payload);
 
   showStatusOverlay("AI: Coming Soon!", C_ACCENT);
 }
