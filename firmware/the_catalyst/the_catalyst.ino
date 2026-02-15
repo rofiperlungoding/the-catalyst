@@ -87,10 +87,13 @@
 // TOUCH CALIBRATION (raw ADC -> screen pixels)
 // Adjust these after running the diagnostic!
 // =============================================================
-#define TOUCH_X_MIN 300
-#define TOUCH_X_MAX 3900
-#define TOUCH_Y_MIN 300
-#define TOUCH_Y_MAX 3900
+// Calibration values — will be set by 3-point calibration at boot
+// These are defaults; the calibration screen refines them
+int touch_xMin = 300, touch_xMax = 3900;
+int touch_yMin = 300, touch_yMax = 3900;
+bool touch_swapXY = false;
+bool touch_invertX = false;
+bool touch_invertY = false;
 
 // =============================================================
 // COLOR PALETTE (Dark Theme)
@@ -284,9 +287,9 @@ void initTouchHSPI() {
   hspi.begin(TOUCH_CLK, TOUCH_DO, TOUCH_DIN);
   // CLK=25, MISO(DO)=27, MOSI(DIN)=26
 
-  // Start touch on HSPI
+  // Start touch on HSPI — NO setRotation, we handle mapping manually
   ts.begin(hspi);
-  ts.setRotation(1);
+  // ts.setRotation is NOT called — raw values used with manual calibration
 
   Serial.println("[TOUCH] HSPI + XPT2046 initialized (poll mode)");
 }
@@ -384,7 +387,6 @@ void runSPIDiagnostic() {
 
   // Re-init touch after raw SPI test
   ts.begin(hspi);
-  ts.setRotation(1);
 
   bool touched = ts.touched();
   TS_Point p = ts.getPoint();
@@ -428,75 +430,247 @@ void runSPIDiagnostic() {
 }
 
 // =============================================================
-// TOUCH TEST (8 seconds)
+// 3-POINT CALIBRATION
 // =============================================================
+// Asks user to touch 3 known screen locations, reads raw values,
+// and computes the correct mapping including swap/invert.
+
+struct CalPoint {
+  int screenX, screenY; // where we drew the target
+  int rawX, rawY;       // what XPT2046 reported
+};
+
+CalPoint calPoints[3];
+
+bool waitForTouch(int &rawX, int &rawY, unsigned long timeoutMs) {
+  // Wait for finger lift first
+  unsigned long start = millis();
+  while (ts.touched() && millis() - start < 2000)
+    delay(10);
+  delay(100);
+
+  // Now wait for new touch
+  start = millis();
+  while (millis() - start < timeoutMs) {
+    if (ts.touched()) {
+      TS_Point p = ts.getPoint();
+      if (p.z > 200) { // Good pressure
+        rawX = p.x;
+        rawY = p.y;
+        Serial.printf("[CAL] Raw: x=%d y=%d z=%d\n", p.x, p.y, p.z);
+        return true;
+      }
+    }
+    delay(10);
+  }
+  return false;
+}
+
+void drawTarget(int x, int y, uint16_t color) {
+  tft.drawCircle(x, y, 12, color);
+  tft.drawCircle(x, y, 6, color);
+  tft.fillCircle(x, y, 3, color);
+  tft.drawFastHLine(x - 18, y, 37, color);
+  tft.drawFastVLine(x, y - 18, 37, color);
+}
+
 void runTouchTest() {
+  Serial.println("\n===== 3-POINT CALIBRATION =====");
+
   tft.fillScreen(C_BG);
   tft.setTextColor(C_FG, C_BG);
   tft.setTextSize(1);
-  tft.drawCentreString("TOUCH TEST", 240, 10, 4);
+  tft.drawCentreString("TOUCH CALIBRATION", 240, 20, 4);
   tft.setTextColor(C_TEXT_DIM, C_BG);
-  tft.drawCentreString("Touch anywhere — green dots appear", 240, 50, 2);
+  tft.drawCentreString("Touch each crosshair precisely", 240, 60, 2);
+  delay(1500);
 
-  // Target circles
-  tft.drawCircle(60, 160, 20, C_GRID);
-  tft.drawCircle(240, 160, 20, C_GRID);
-  tft.drawCircle(420, 160, 20, C_GRID);
+  // 3 calibration points: top-left area, center, bottom-right area
+  calPoints[0] = {50, 50, 0, 0};   // top-left
+  calPoints[1] = {240, 160, 0, 0}; // center
+  calPoints[2] = {430, 270, 0, 0}; // bottom-right
 
-  tft.setTextColor(C_WARN, C_BG);
-  tft.drawCentreString("Auto-skip in 8s...", 240, 290, 2);
+  for (int i = 0; i < 3; i++) {
+    tft.fillScreen(C_BG);
+    tft.setTextColor(C_FG, C_BG);
 
-  unsigned long start = millis();
-  int touchCount = 0;
+    char label[30];
+    snprintf(label, sizeof(label), "Point %d of 3", i + 1);
+    tft.drawCentreString(label, 240, 10, 2);
+    tft.setTextColor(C_TEXT_DIM, C_BG);
+    tft.drawCentreString("Touch the crosshair", 240, 300, 2);
 
-  while (millis() - start < 8000) {
-    if (ts.touched()) {
-      TS_Point p = ts.getPoint();
+    drawTarget(calPoints[i].screenX, calPoints[i].screenY, C_ACCENT);
 
-      // Map raw ADC to screen pixels
-      int sx = map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, 0, SCREEN_W);
-      int sy = map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, 0, SCREEN_H);
+    int rawX, rawY;
+    if (waitForTouch(rawX, rawY, 15000)) {
+      calPoints[i].rawX = rawX;
+      calPoints[i].rawY = rawY;
 
-      // Clamp
-      sx = constrain(sx, 0, SCREEN_W - 1);
-      sy = constrain(sy, 0, SCREEN_H - 1);
-
-      tft.fillCircle(sx, sy, 5, C_PRIMARY);
-      touchCount++;
-
-      Serial.printf("[TOUCH] raw(%d,%d) z=%d -> screen(%d,%d) #%d\n", p.x, p.y,
-                    p.z, sx, sy, touchCount);
-
-      // Show info
-      tft.fillRect(0, 100, 480, 20, C_BG);
-      tft.setTextColor(C_PRIMARY, C_BG);
-      char buf[50];
-      snprintf(buf, sizeof(buf), "Touch #%d raw(%d,%d) scr(%d,%d)", touchCount,
-               p.x, p.y, sx, sy);
-      tft.drawCentreString(buf, 240, 100, 2);
-
-      delay(30);
+      // Visual feedback
+      drawTarget(calPoints[i].screenX, calPoints[i].screenY, C_PRIMARY);
+      Serial.printf("[CAL] Point %d: screen(%d,%d) -> raw(%d,%d)\n", i + 1,
+                    calPoints[i].screenX, calPoints[i].screenY, rawX, rawY);
+      delay(500);
+    } else {
+      Serial.printf("[CAL] Timeout on point %d, using defaults\n", i + 1);
+      tft.setTextColor(C_WARN, C_BG);
+      tft.drawCentreString("Timeout! Using defaults...", 240, 150, 2);
+      delay(1500);
+      return; // Skip calibration, use defaults
     }
   }
 
-  // Result
-  tft.fillScreen(C_BG);
-  if (touchCount > 0) {
-    tft.setTextColor(C_PRIMARY, C_BG);
-    tft.drawCentreString("TOUCH WORKING!", 240, 120, 4);
-    char msg[30];
-    snprintf(msg, sizeof(msg), "%d touches detected", touchCount);
-    tft.setTextColor(C_TEXT_DIM, C_BG);
-    tft.drawCentreString(msg, 240, 170, 2);
-    touch_working = true;
+  // Compute calibration from points 0 (top-left) and 2 (bottom-right)
+  int raw0X = calPoints[0].rawX, raw0Y = calPoints[0].rawY;
+  int raw2X = calPoints[2].rawX, raw2Y = calPoints[2].rawY;
+  int scr0X = calPoints[0].screenX, scr0Y = calPoints[0].screenY;
+  int scr2X = calPoints[2].screenX, scr2Y = calPoints[2].screenY;
+
+  // Determine if X/Y are swapped:
+  // The screen goes from (50,50) to (430,270) — X range is bigger.
+  // Raw values: check which raw axis has the larger delta
+  int rawDeltaX = abs(raw2X - raw0X);
+  int rawDeltaY = abs(raw2Y - raw0Y);
+
+  // Compare: does raw X correspond to screen X, or to screen Y?
+  // If raw X delta is small but raw Y delta is large, X/Y are swapped
+  // Screen X range = 430-50=380, Screen Y range = 270-50=220
+  // We expect the axis with bigger raw delta to map to screen X (larger range)
+
+  Serial.printf("[CAL] rawDeltaX=%d rawDeltaY=%d\n", rawDeltaX, rawDeltaY);
+
+  if (rawDeltaY > rawDeltaX * 1.3) {
+    // raw Y has bigger range -> raw Y maps to screen X -> SWAP
+    touch_swapXY = true;
+    Serial.println("[CAL] Axes SWAPPED (raw Y -> screen X)");
   } else {
-    tft.setTextColor(C_WARN, C_BG);
-    tft.drawCentreString("NO TOUCH DETECTED", 240, 120, 4);
-    tft.setTextColor(C_TEXT_DIM, C_BG);
-    tft.drawCentreString("Continuing without touch...", 240, 170, 2);
+    touch_swapXY = false;
+    Serial.println("[CAL] Axes NORMAL (raw X -> screen X)");
   }
-  Serial.printf("[TOUCH] Test: %d touches\n", touchCount);
-  delay(2000);
+
+  // After potential swap, figure out min/max and inversion
+  int rX0, rX2, rY0, rY2;
+  if (touch_swapXY) {
+    rX0 = raw0Y;
+    rX2 = raw2Y; // raw Y -> screen X
+    rY0 = raw0X;
+    rY2 = raw2X; // raw X -> screen Y
+  } else {
+    rX0 = raw0X;
+    rX2 = raw2X;
+    rY0 = raw0Y;
+    rY2 = raw2Y;
+  }
+
+  // Check direction: does increasing raw correspond to increasing screen?
+  // scr0 = (50,50) = top-left, scr2 = (430,270) = bottom-right
+  // If raw at top-left > raw at bottom-right, the axis is inverted
+  if (rX0 > rX2) {
+    touch_invertX = true;
+    touch_xMin = rX2; // smaller raw = larger screen
+    touch_xMax = rX0;
+  } else {
+    touch_invertX = false;
+    touch_xMin = rX0;
+    touch_xMax = rX2;
+  }
+
+  if (rY0 > rY2) {
+    touch_invertY = true;
+    touch_yMin = rY2;
+    touch_yMax = rY0;
+  } else {
+    touch_invertY = false;
+    touch_yMin = rY0;
+    touch_yMax = rY2;
+  }
+
+  // Extend range slightly to cover edges
+  int xRange = touch_xMax - touch_xMin;
+  int yRange = touch_yMax - touch_yMin;
+  touch_xMin -= xRange * scr0X / (scr2X - scr0X);
+  touch_xMax += xRange * (SCREEN_W - scr2X) / (scr2X - scr0X);
+  touch_yMin -= yRange * scr0Y / (scr2Y - scr0Y);
+  touch_yMax += yRange * (SCREEN_H - scr2Y) / (scr2Y - scr0Y);
+
+  Serial.printf(
+      "[CAL] Result: xMin=%d xMax=%d yMin=%d yMax=%d swap=%d invX=%d invY=%d\n",
+      touch_xMin, touch_xMax, touch_yMin, touch_yMax, touch_swapXY,
+      touch_invertX, touch_invertY);
+
+  touch_working = true;
+
+  // Verify with center point
+  int centerRawX = calPoints[1].rawX, centerRawY = calPoints[1].rawY;
+  int testSX, testSY;
+  mapTouch(centerRawX, centerRawY, testSX, testSY);
+
+  tft.fillScreen(C_BG);
+  tft.setTextColor(C_PRIMARY, C_BG);
+  tft.drawCentreString("CALIBRATION DONE!", 240, 40, 4);
+
+  char info[80];
+  snprintf(info, sizeof(info), "swap=%s invX=%s invY=%s",
+           touch_swapXY ? "Y" : "N", touch_invertX ? "Y" : "N",
+           touch_invertY ? "Y" : "N");
+  tft.setTextColor(C_TEXT_DIM, C_BG);
+  tft.drawCentreString(info, 240, 80, 2);
+
+  snprintf(info, sizeof(info), "Center check: expected(240,160) got(%d,%d)",
+           testSX, testSY);
+  int error = abs(testSX - 240) + abs(testSY - 160);
+  tft.setTextColor(error < 60 ? C_PRIMARY : C_WARN, C_BG);
+  tft.drawCentreString(info, 240, 110, 2);
+
+  // Quick verify — touch and see dots
+  tft.setTextColor(C_TEXT_DIM, C_BG);
+  tft.drawCentreString("Verify: touch screen for 5s", 240, 150, 2);
+  drawTarget(240, 230, C_GRID); // center target
+  drawTarget(60, 230, C_GRID);  // left target
+  drawTarget(420, 230, C_GRID); // right target
+
+  unsigned long start = millis();
+  while (millis() - start < 5000) {
+    if (ts.touched()) {
+      TS_Point p = ts.getPoint();
+      int sx, sy;
+      mapTouch(p.x, p.y, sx, sy);
+      tft.fillCircle(sx, sy, 4, C_PRIMARY);
+      delay(20);
+    }
+  }
+  delay(500);
+}
+
+// =============================================================
+// TOUCH MAPPING
+// =============================================================
+void mapTouch(int rawX, int rawY, int &screenX, int &screenY) {
+  int rx = rawX, ry = rawY;
+
+  // Swap axes if needed
+  if (touch_swapXY) {
+    int tmp = rx;
+    rx = ry;
+    ry = tmp;
+  }
+
+  // Map raw to screen
+  if (touch_invertX) {
+    screenX = map(rx, touch_xMax, touch_xMin, 0, SCREEN_W);
+  } else {
+    screenX = map(rx, touch_xMin, touch_xMax, 0, SCREEN_W);
+  }
+
+  if (touch_invertY) {
+    screenY = map(ry, touch_yMax, touch_yMin, 0, SCREEN_H);
+  } else {
+    screenY = map(ry, touch_yMin, touch_yMax, 0, SCREEN_H);
+  }
+
+  screenX = constrain(screenX, 0, SCREEN_W - 1);
+  screenY = constrain(screenY, 0, SCREEN_H - 1);
 }
 
 // =============================================================
@@ -512,15 +686,17 @@ void checkTouch() {
   last_touch_time = now;
 
   TS_Point p = ts.getPoint();
+  if (p.z < 200)
+    return; // Ignore weak touches
 
-  // Map raw -> screen
-  int sx = map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, 0, SCREEN_W);
-  int sy = map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, 0, SCREEN_H);
-  sx = constrain(sx, 0, SCREEN_W - 1);
-  sy = constrain(sy, 0, SCREEN_H - 1);
+  int sx, sy;
+  mapTouch(p.x, p.y, sx, sy);
 
   Serial.printf("[TOUCH] raw(%d,%d) z=%d -> scr(%d,%d) mode=%s\n", p.x, p.y,
                 p.z, sx, sy, currentMode == MODE_DASHBOARD ? "DASH" : "CTRL");
+
+  // DEBUG: draw a small red dot where touch registers
+  tft.fillCircle(sx, sy, 3, C_RED);
 
   if (currentMode == MODE_DASHBOARD) {
     handleDashboardTouch(sx, sy);
