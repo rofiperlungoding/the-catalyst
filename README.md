@@ -1,9 +1,9 @@
 # THE CATALYST(1) User Manual
 
 [![Design: Industrial Luxury](https://img.shields.io/badge/DESIGN-INDUSTRIAL_LUXURY-black?style=for-the-badge&labelColor=555555)]()
-[![Tech: React + Vite](https://img.shields.io/badge/TECH-REACT_CORE-61DAFB?style=for-the-badge&labelColor=555555&logo=react)]()
-[![Styling: Tailwind CSS](https://img.shields.io/badge/STYLING-TAILWIND_CSS-38B2AC?style=for-the-badge&labelColor=555555&logo=tailwind-css)]()
-[![Type: TypeScript](https://img.shields.io/badge/TYPE-TYPESCRIPT-3178C6?style=for-the-badge&labelColor=555555&logo=typescript)]()
+[![Hardware: ESP32](https://img.shields.io/badge/HARDWARE-ESP32_CORE-E7352C?style=for-the-badge&labelColor=555555&logo=espressif)]()
+[![Backend: Supabase](https://img.shields.io/badge/DATABASE-SUPABASE_REALTIME-3ECF8E?style=for-the-badge&labelColor=555555&logo=supabase)]()
+[![Service: IoT Telemetry](https://img.shields.io/badge/SERVICE-IOT_TELEMETRY-007ACC?style=for-the-badge&labelColor=555555&logo=connectivity)]()
 
 ## NAME
 The Catalyst — Advanced Industrial Monitoring and IoT Environment Analytics Platform.
