@@ -1,8 +1,27 @@
 {
-  "name": "dashboard",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@rofiperlungoding/the-catalyst",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "private": false,
+  "version": "1.0.0",
+  "description": "Enterprise-grade industrial IoT monitoring platform with real-time telemetry and advanced data visualization.",
   "type": "module",
+  "author": "rofiperlungoding <opikopi32@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rofiperlungoding/the-catalyst.git"
+  },
+  "keywords": [
+    "iot",
+    "telemetry",
+    "industrial-monitoring",
+    "react",
+    "supabase",
+    "esp32",
+    "enterprise"
+  ],
+  "license": "MIT",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -31,6 +50,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "jsdom": "^27.4.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.18",
     "typescript": "~5.9.3",

@@ -1,0 +1,120 @@
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate:
+    name: Validation & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Dependencies
+        run: |
+          cd dashboard
+          npm ci
+
+      - name: Lint Verification
+        run: |
+          cd dashboard
+          npm run lint
+
+      - name: Type Check
+        run: |
+          cd dashboard
+          npx tsc --noEmit
+
+      - name: Production Build
+        run: |
+          cd dashboard
+          npm run build
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-assets
+          path: dashboard/dist/
+
+  release:
+    name: GitHub Release
+    needs: validate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-assets
+          path: dist/
+
+      - name: Archive Assets
+        run: |
+          zip -r release-assets.zip dist/
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets.zip
+          body: |
+            ## The Catalyst v1.0.0 Stable Release
+            
+            Enterprise-grade Industrial IoT Monitoring Platform.
+            
+            ### Included Features:
+            - ESP32 Real-time Telemetry
+            - Advanced Data Visualization (Recharts)
+            - Secure Supabase Integration
+            - Industrial-grade Dashboard Interface
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    name: Publish to GitHub Packages
+    needs: validate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@rofiperlungoding'
+
+      - name: Install Dependencies
+        run: |
+          cd dashboard
+          npm ci
+
+      - name: Publish Package
+        run: |
+          cd dashboard
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
