@@ -42,14 +42,14 @@ export const SensorChart = memo(function SensorChart({ data, dataKey, color = "#
                         tickFormatter={(str) => format(new Date(str), "HH:mm")}
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 500 }}
+                        tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 500, fontFamily: '"SF Pro Display", sans-serif' }}
                         minTickGap={60}
                         dy={10}
                     />
                     <YAxis
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 500 }}
+                        tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 500, fontFamily: '"SF Pro Display", sans-serif' }}
                         domain={['auto', 'auto']}
                         allowDataOverflow={false}
                         width={30}
@@ -62,7 +62,7 @@ export const SensorChart = memo(function SensorChart({ data, dataKey, color = "#
                             boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                             padding: "8px 12px",
                         }}
-                        itemStyle={{ color: "#0f172a", fontWeight: 700, fontSize: "14px", fontFamily: 'JetBrains Mono, monospace' }}
+                        itemStyle={{ color: "#0f172a", fontWeight: 700, fontSize: "14px", fontFamily: '"SF Pro Display", sans-serif' }}
                         labelStyle={{ display: "none" }}
                         formatter={(value: number | undefined) => [`${(value ?? 0).toFixed(1)}${unit || ""}`, ""]}
                         cursor={{ stroke: color, strokeWidth: 2, strokeDasharray: "4 4" }}

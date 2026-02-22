@@ -22,14 +22,17 @@ export const ComfortGauge = memo(function ComfortGauge({ score, label, className
     return (
         <div className={cn("relative flex items-center justify-center h-[240px] w-full", className)}>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
-                <span className="text-5xl font-black tracking-tighter font-mono-nums" style={{ color }}>
+                {/* Score number — black/heavy font */}
+                <span className="text-5xl font-black tracking-tight font-mono-nums" style={{ color }}>
                     {Math.round(safeScore)}
                 </span>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                {/* Subtitle — bold, tracking wide */}
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.15em] mt-1.5">
                     Comfort Index
                 </span>
+                {/* Label badge */}
                 <div className={cn(
-                    "mt-2 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide",
+                    "mt-3 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider",
                     color === "#ef4444" ? "bg-red-50 text-red-600" :
                         color === "#f59e0b" ? "bg-amber-50 text-amber-600" :
                             "bg-emerald-50 text-emerald-600"
@@ -42,7 +45,7 @@ export const ComfortGauge = memo(function ComfortGauge({ score, label, className
                 <RadialBarChart
                     innerRadius="85%"
                     outerRadius="100%"
-                    barSize={16}
+                    barSize={14}
                     data={data}
                     startAngle={90}
                     endAngle={-270}
@@ -52,7 +55,7 @@ export const ComfortGauge = memo(function ComfortGauge({ score, label, className
                     <RadialBar
                         background={{ fill: "#f1f5f9" }}
                         dataKey="value"
-                        cornerRadius={10}
+                        cornerRadius={12}
                         animationDuration={800}
                         animationEasing="ease-out"
                     />

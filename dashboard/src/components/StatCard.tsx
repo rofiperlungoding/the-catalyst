@@ -27,7 +27,7 @@ export const StatCard = memo(function StatCard({ title, value, unit, icon: Icon,
     };
 
     const iconBgStyles = {
-        default: "bg-slate-100 text-slate-600",
+        default: "bg-slate-50 text-slate-500",
         blue: "bg-blue-50 text-blue-500",
         green: "bg-emerald-50 text-emerald-500",
         orange: "bg-orange-50 text-orange-500",
@@ -41,17 +41,17 @@ export const StatCard = memo(function StatCard({ title, value, unit, icon: Icon,
         <div
             className={cn(
                 "rounded-2xl p-6 bg-white shadow-sm border border-slate-100",
-                "hover:shadow-md hover:-translate-y-1 transition-all duration-200 ease-out",
+                "hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ease-out",
                 className
             )}
         >
             <div className="flex justify-between items-start mb-4">
-                <div className={cn("p-3 rounded-full", iconBgStyles[color])}>
-                    <Icon size={22} strokeWidth={2.5} />
+                <div className={cn("p-2.5 rounded-xl", iconBgStyles[color])}>
+                    <Icon size={20} strokeWidth={2.5} />
                 </div>
                 {trend && (
                     <div className={cn(
-                        "flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full",
+                        "flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full",
                         trend.isPositive ? "bg-red-50 text-red-600" : "bg-emerald-50 text-emerald-600"
                     )}>
                         {trend.isPositive ? <ArrowUpRight size={12} strokeWidth={3} /> : <ArrowDownRight size={12} strokeWidth={3} />}
@@ -61,9 +61,11 @@ export const StatCard = memo(function StatCard({ title, value, unit, icon: Icon,
             </div>
 
             <div>
-                <h3 className="text-sm font-semibold text-slate-500 tracking-wide mb-1">{title}</h3>
-                <div className="flex items-baseline gap-1">
-                    <span className={cn("text-4xl font-extrabold tracking-tight font-mono-nums", colorStyles[color])}>
+                {/* Label — medium weight, clear */}
+                <h3 className="text-sm font-semibold text-slate-400 tracking-wide mb-1.5">{title}</h3>
+                {/* Value — extra bold, prominent */}
+                <div className="flex items-baseline gap-1.5">
+                    <span className={cn("text-[2rem] font-black tracking-tighter leading-none font-mono-nums", colorStyles[color])}>
                         {numValue}
                     </span>
                     <span className="text-sm font-bold text-slate-400 uppercase">{unit}</span>
