@@ -29,3 +29,6 @@ npm-debug.log*
 
 # Arduino build
 firmware/the_catalyst/build/
+ 
+ # Credentials
+ dashboard/cookies.txt
