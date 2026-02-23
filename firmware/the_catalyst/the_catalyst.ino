@@ -54,6 +54,7 @@
 
 #define SENSOR_READ_INTERVAL 5000
 #define SUPABASE_SYNC_INTERVAL 30000
+#define UNIVERSITY_SYNC_INTERVAL 300000 // 5 minutes
 #define HEALTH_REPORT_INTERVAL 60000
 #define CLOCK_UPDATE_INTERVAL 1000 // Update clock every second
 
@@ -102,6 +103,18 @@ unsigned long last_clock_update = 0;
 bool need_full_redraw = true;
 bool need_clock_redraw = false;
 
+struct UniversityTask {
+  String id;
+  String course_name;
+  String task_title;
+  time_t deadline;
+  bool active = false;
+};
+
+UniversityTask tasks[2];
+int active_tasks_count = 0;
+unsigned long last_university_sync = 0;
+
 // Clock cache (avoid redrawing if time hasn't changed)
 char last_time_str[6] = "";
 char last_date_str[24] = "";
@@ -133,6 +146,7 @@ void sendSensorData();
 void sendHealthMetrics();
 void readSensor();
 void updateLCD();
+void fetchUniversityTasks();
 String supabaseRequest(String endpoint, String method, String payload);
 
 // =============================================================
@@ -230,6 +244,15 @@ void loop() {
     last_health_report = now;
   }
 
+  // 7. University Tasks Sync
+  if (wifi_connected &&
+      (now - last_university_sync > UNIVERSITY_SYNC_INTERVAL ||
+       last_university_sync == 0)) {
+    fetchUniversityTasks();
+    last_university_sync = now;
+    need_full_redraw = true;
+  }
+
   // 7. Connection monitor
   bool connected_now = (WiFi.status() == WL_CONNECTED);
   if (wifi_connected != connected_now) {
@@ -246,6 +269,7 @@ void drawFullDashboard() {
   drawHeader();
   drawClock();
   drawMetricCards();
+  drawUniversityTasks();
   drawGraphCards();
   drawFooter();
 }
@@ -311,7 +335,7 @@ void drawClock() {
 // --- METRIC CARDS (Top Row) ---
 void drawMetricCards() {
   // ── TEMPERATURE CARD (Top Left) ──
-  int cx = 20, cy = 55, cw = 220, ch = 115;
+  int cx = 20, cy = 50, cw = 220, ch = 95;
   drawCard(cx, cy, cw, ch);
 
   tft.setTextDatum(TL_DATUM);
@@ -319,19 +343,19 @@ void drawMetricCards() {
   // Label (Regular 14, muted)
   tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
   tft.setFreeFont(FF_LABEL);
-  tft.drawString("Temperature", cx + 18, cy + 14);
+  tft.drawString("Temperature", cx + 18, cy + 12);
 
   // Value (Bold 32, accent blue)
   tft.setTextColor(C_ACCENT_BLUE, C_CARD_BG);
   tft.setFreeFont(FF_HERO);
   String tVal = String(current_temp, 1);
   int tw = tft.textWidth(tVal);
-  tft.drawString(tVal, cx + 18, cy + 40);
+  tft.drawString(tVal, cx + 18, cy + 32);
 
   // Unit (Medium 16)
   tft.setFreeFont(FF_BODY);
   tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
-  tft.drawString("C", cx + 18 + tw + 4, cy + 50);
+  tft.drawString("C", cx + 18 + tw + 4, cy + 42);
 
   // Comfort badge (Caption italic)
   float score = calculateComfortScore(current_temp, current_humid);
@@ -344,10 +368,10 @@ void drawMetricCards() {
 
   tft.setFreeFont(FF_CAPTION);
   tft.setTextColor(comfortClr, C_CARD_BG);
-  tft.drawString(comfortStr, cx + 18, cy + 88);
+  tft.drawString(comfortStr, cx + 18, cy + 72);
 
   // ── HUMIDITY CARD (Top Right) ──
-  int hx = 260, hy = 55, hw = 200, hh = 115;
+  int hx = 260, hy = 50, hw = 200, hh = 95;
   drawCard(hx, hy, hw, hh);
 
   tft.setTextDatum(TL_DATUM);
@@ -355,38 +379,38 @@ void drawMetricCards() {
   // Label
   tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
   tft.setFreeFont(FF_LABEL);
-  tft.drawString("Humidity", hx + 18, hy + 14);
+  tft.drawString("Humidity", hx + 18, hy + 12);
 
   // Value (Bold 32, accent cyan)
   tft.setTextColor(C_ACCENT_CYAN, C_CARD_BG);
   tft.setFreeFont(FF_HERO);
   String hVal = String(current_humid, 1);
   int hw2 = tft.textWidth(hVal);
-  tft.drawString(hVal, hx + 18, hy + 40);
+  tft.drawString(hVal, hx + 18, hy + 32);
 
   // Unit
   tft.setFreeFont(FF_BODY);
   tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
-  tft.drawString("%", hx + 18 + hw2 + 4, hy + 50);
+  tft.drawString("%", hx + 18 + hw2 + 4, hy + 42);
 
   // IP address (Caption italic)
   tft.setFreeFont(FF_CAPTION);
   tft.setTextColor(C_TEXT_MUTED, C_CARD_BG);
-  tft.drawString(WiFi.localIP().toString(), hx + 18, hy + 88);
+  tft.drawString(WiFi.localIP().toString(), hx + 18, hy + 72);
 }
 
 // --- GRAPH CARDS (Bottom Row) ---
 void drawGraphCards() {
   // ── TEMP TREND (Bottom Left) ──
-  int gx = 20, gy = 180, gw = 220, gh = 115;
+  int gx = 20, gy = 245, gw = 220, gh = 50;
   drawCard(gx, gy, gw, gh);
-  drawGraph(gx + 12, gy + 35, gw - 24, gh - 48, temp_history, C_ACCENT_BLUE,
+  drawGraph(gx + 12, gy + 32, gw - 24, gh - 42, temp_history, C_ACCENT_BLUE,
             "Temp Trend");
 
   // ── HUMID TREND (Bottom Right) ──
-  int hgx = 260, hgy = 180, hgw = 200, hgh = 115;
+  int hgx = 260, hgy = 245, hgw = 200, hgh = 50;
   drawCard(hgx, hgy, hgw, hgh);
-  drawGraph(hgx + 12, hgy + 35, hgw - 24, hgh - 48, humid_history,
+  drawGraph(hgx + 12, hgy + 32, hgw - 24, hgh - 42, humid_history,
             C_ACCENT_CYAN, "Humid Trend");
 }
 
@@ -540,6 +564,116 @@ void syncTime() {
   configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
   struct tm ti;
   getLocalTime(&ti, 5000);
+}
+
+// --- UNIVERSITY TASKS ---
+void fetchUniversityTasks() {
+  if (!wifi_connected)
+    return;
+
+  // Fetch 2 pending tasks ordered by deadline
+  String query = "/rest/v1/"
+                 "brone_tasks?status=eq.pending&select=id,course_name,task_"
+                 "title,deadline&order=deadline.asc&limit=2";
+  String response = supabaseRequest(query, "GET", "");
+
+  if (response == "")
+    return;
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, response);
+  if (error) {
+    Serial.print("JSON Parse Failed: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  active_tasks_count = doc.size();
+  for (int i = 0; i < active_tasks_count; i++) {
+    tasks[i].id = doc[i]["id"].as<String>();
+    tasks[i].course_name = doc[i]["course_name"].as<String>();
+    tasks[i].task_title = doc[i]["task_title"].as<String>();
+
+    // Simple ISO8601 parsing (YYYY-MM-DDTHH:MM:SS)
+    const char *dStr = doc[i]["deadline"];
+    struct tm tm;
+    memset(&tm, 0, sizeof(struct tm));
+    if (strptime(dStr, "%Y-%m-%dT%H:%M:%S", &tm)) {
+      tasks[i].deadline = mktime(&tm);
+    }
+    tasks[i].active = true;
+  }
+}
+
+void drawUniversityTasks() {
+  int tx = 20, ty = 153, tw = 440, th = 85;
+  drawCard(tx, ty, tw, th);
+
+  tft.setTextDatum(TL_DATUM);
+  tft.setTextColor(C_TEXT_DARK, C_CARD_BG);
+  tft.setFreeFont(FF_BODY);
+  tft.drawString("Assignments", tx + 15, ty + 10);
+
+  if (active_tasks_count == 0) {
+    tft.setTextColor(C_TEXT_MUTED, C_CARD_BG);
+    tft.setFreeFont(FF_LABEL);
+    tft.drawString("All tasks completed!", tx + 15, ty + 40);
+    return;
+  }
+
+  time_t now;
+  time(&now);
+
+  for (int i = 0; i < active_tasks_count; i++) {
+    int rowY = ty + 32 + (i * 24);
+
+    // Course (Label)
+    tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
+    tft.setFreeFont(FF_CAPTION);
+    String course = tasks[i].course_name;
+    if (course.length() > 20)
+      course = course.substring(0, 17) + "...";
+    tft.drawString(course, tx + 15, rowY);
+
+    // Title (Label Bold)
+    tft.setTextColor(C_TEXT_DARK, C_CARD_BG);
+    tft.setFreeFont(FF_LABEL);
+    String title = tasks[i].task_title;
+    if (title.length() > 30)
+      title = title.substring(0, 27) + "...";
+    tft.drawString(title, tx + 15, rowY + 10);
+
+    // Countdown
+    long diff = difftime(tasks[i].deadline, now);
+    String countdown;
+    uint16_t color = C_TEXT_LIGHT;
+
+    if (diff < 0) {
+      countdown = "Expired";
+      color = C_ACCENT_RED;
+    } else {
+      long d = diff / 86400;
+      long h = (diff % 86400) / 3600;
+      long m = (diff % 3600) / 60;
+
+      if (d > 0)
+        countdown = String(d) + "d " + String(h) + "h rem";
+      else if (h > 0)
+        countdown = String(h) + "h " + String(m) + "m rem";
+      else
+        countdown = String(m) + "m remaining";
+
+      if (diff < 86400)
+        color = C_ACCENT_RED; // < 24h
+      else if (diff < 172800)
+        color = C_ACCENT_CYAN; // < 48h
+    }
+
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(color, C_CARD_BG);
+    tft.setFreeFont(FF_CAPTION);
+    tft.drawString(countdown, tx + tw - 15, rowY + 10);
+  }
 }
 
 String supabaseRequest(String endpoint, String method, String payload) {

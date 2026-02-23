@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
-import type { Device, SensorReading } from "./types";
+import type { Device, SensorReading, BroneTask } from "./types";
 import { StatCard } from "./components/StatCard";
 import { SensorChart } from "./components/SensorChart";
 import { ComfortGauge } from "./components/ComfortGauge";
+import { AssignmentTracker } from "./components/AssignmentTracker";
 import { SettingsModal, type AlertSettings } from "./components/SettingsModal";
 import { Toast, type ToastData } from "./components/Toast";
 import { Activity, Droplet, Thermometer, Wifi, RefreshCw, Smartphone, Settings, BarChart3, CloudRain, Flame } from "lucide-react";
@@ -13,7 +14,9 @@ function App() {
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
+  const [universityTasks, setUniversityTasks] = useState<BroneTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tasksLoading, setTasksLoading] = useState(false);
   const [isLive, setIsLive] = useState(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -130,6 +133,28 @@ function App() {
       setDevice(deviceData);
     }
     setLoading(false);
+    fetchTasks();
+  }, []);
+
+  const fetchTasks = useCallback(async (triggerSync = false) => {
+    setTasksLoading(true);
+
+    // Optional: Trigger the Netlify function to sync fresh data
+    if (triggerSync) {
+      try {
+        await fetch('/.netlify/functions/sync-brone');
+      } catch (e) {
+        console.error("Sync trigger failed", e);
+      }
+    }
+
+    const { data } = await supabase
+      .from("brone_tasks")
+      .select("*")
+      .order("deadline", { ascending: true });
+
+    if (data) setUniversityTasks(data);
+    setTasksLoading(false);
   }, []);
 
   const prevReading = readings.length > 1 ? readings[1] : null;
@@ -164,6 +189,9 @@ function App() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button onClick={() => fetchTasks(true)} title="Sync Brone Tasks" className="p-2.5 rounded-xl hover:bg-white hover:shadow-sm text-blue-500 transition-all duration-200 border border-transparent hover:border-blue-100">
+                <RefreshCw size={18} className={tasksLoading ? "animate-spin" : ""} />
+              </button>
               <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-all duration-200">
                 <Settings size={18} />
               </button>
@@ -321,6 +349,15 @@ function App() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Assignment Tracker */}
+          <div className="lg:col-span-1">
+            <AssignmentTracker
+              tasks={universityTasks}
+              isLoading={tasksLoading}
+              onTaskUpdate={() => fetchTasks(false)}
+            />
           </div>
 
         </div>

@@ -1,0 +1,14 @@
+{
+  "name": "sync-brone",
+  "version": "1.0.0",
+  "main": "sync-brone.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.4",
+    "axios": "^1.6.0",
+    "axios-cookiejar-support": "^6.0.5",
+    "cheerio": "^1.0.0-rc.12",
+    "cookie": "^0.6.0",
+    "node-ical": "^0.25.4",
+    "tough-cookie": "^6.0.0"
+  }
+}

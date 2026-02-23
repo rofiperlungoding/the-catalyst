@@ -28,3 +28,11 @@ export type DeviceHealth = {
     wifi_rssi: number;
     recorded_at: string;
 };
+export type BroneTask = {
+    id: string;
+    course_name: string;
+    task_title: string;
+    deadline: string;
+    status: 'pending' | 'completed';
+    updated_at: string;
+};
