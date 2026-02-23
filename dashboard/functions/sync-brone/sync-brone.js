@@ -1,7 +1,7 @@
 const ical = require('node-ical');
 const { createClient } = require('@supabase/supabase-js');
 
-const BRONE_ICAL_URL = process.env.BRONE_ICAL_URL || "https://brone.ub.ac.id/calendar/export_execute.php?userid=47907&authtoken=72d9b83b379963a24be5fe4c9dead7d4a517639e&preset_what=all&preset_time=custom";
+const BRONE_ICAL_URL = process.env.BRONE_ICAL_URL;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
