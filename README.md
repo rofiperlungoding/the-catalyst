@@ -18,7 +18,7 @@ npm run lint
 ## DESCRIPTION
 The Catalyst is a high-performance IoT ecosystem designed for real-time industrial telemetry, environmental monitoring, and predictive analytics. The platform bridges the gap between hardware sensors and administrative intelligence, providing a unified dashboard for critical data visualization and asset management.
 
-### v0.6.0 — SF Pro Display & Authentic Monitoring
+### v0.6.1 — SF Pro Display & Authentic Monitoring
 The latest version introduces the **"No-Mock" Philosophy**, ensuring every status bit on the dashboard and device matches the physical reality of the connection.
 
 ## FEATURES

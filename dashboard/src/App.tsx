@@ -66,6 +66,61 @@ function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const fetchTasks = useCallback(async (triggerSync = false) => {
+    setTasksLoading(true);
+
+    if (triggerSync) {
+      try {
+        await fetch('/.netlify/functions/sync-brone');
+      } catch (e) {
+        console.error("Sync trigger failed", e);
+      }
+    }
+
+    const { data } = await supabase
+      .from("brone_tasks")
+      .select("*")
+      .order("deadline", { ascending: true });
+
+    if (data) setUniversityTasks(data);
+    setTasksLoading(false);
+  }, []);
+
+  const fetchInitialData = useCallback(async () => {
+    setLoading(true);
+
+    // 1. Fetch Latest Device Heartbeat FIRST
+    const { data: deviceData } = await supabase
+      .from("devices")
+      .select("*")
+      .limit(1)
+      .single();
+
+    if (deviceData) {
+      setDevice(deviceData);
+      // Log for debugging: confirm actual last_seen vs local time
+      const lastSeen = new Date(deviceData.last_seen_at).getTime();
+      const now = Date.now();
+      const diffMinutes = (now - lastSeen) / 60000;
+      console.log(`[Authenticity Check] Device last seen ${diffMinutes.toFixed(2)}m ago`);
+    }
+
+    // 2. Fetch Sensor Readings
+    const { data: readingData } = await supabase
+      .from("sensor_readings")
+      .select("*")
+      .order("recorded_at", { ascending: false })
+      .limit(30);
+
+    if (readingData && readingData.length > 0) {
+      setReadings(readingData);
+      setLatestReading(readingData[0]);
+    }
+
+    setLoading(false);
+    fetchTasks();
+  }, [fetchTasks]);
+
   useEffect(() => {
     fetchInitialData();
 
@@ -104,54 +159,7 @@ function App() {
       clearInterval(interval);
       if (liveTimeoutRef.current) clearTimeout(liveTimeoutRef.current);
     };
-  }, [alertSettings, checkAlerts]);
-
-  const fetchInitialData = useCallback(async () => {
-    setLoading(true);
-    const { data: readingData } = await supabase
-      .from("sensor_readings")
-      .select("*")
-      .order("recorded_at", { ascending: false })
-      .limit(30);
-
-    if (readingData && readingData.length > 0) {
-      setReadings(readingData);
-      setLatestReading(readingData[0]);
-    }
-
-    const { data: deviceData } = await supabase
-      .from("devices")
-      .select("*")
-      .limit(1)
-      .single();
-
-    if (deviceData) {
-      setDevice(deviceData);
-    }
-    setLoading(false);
-    fetchTasks();
-  }, []);
-
-  const fetchTasks = useCallback(async (triggerSync = false) => {
-    setTasksLoading(true);
-
-    // Optional: Trigger the Netlify function to sync fresh data
-    if (triggerSync) {
-      try {
-        await fetch('/.netlify/functions/sync-brone');
-      } catch (e) {
-        console.error("Sync trigger failed", e);
-      }
-    }
-
-    const { data } = await supabase
-      .from("brone_tasks")
-      .select("*")
-      .order("deadline", { ascending: true });
-
-    if (data) setUniversityTasks(data);
-    setTasksLoading(false);
-  }, []);
+  }, [alertSettings, checkAlerts, fetchInitialData]);
 
   const prevReading = readings.length > 1 ? readings[1] : null;
   const tempTrend = prevReading && latestReading ?

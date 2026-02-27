@@ -71,7 +71,7 @@ const int network_count = sizeof(networks) / sizeof(networks[0]);
 #define DST_OFFSET 0
 
 #define DEVICE_NAME "The Catalyst"
-#define FIRMWARE_VERSION "0.6.0"
+#define FIRMWARE_VERSION "0.6.1"
 
 // =============================================================
 // COLOR PALETTE (WCAG AA)
