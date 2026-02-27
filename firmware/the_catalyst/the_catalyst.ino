@@ -34,8 +34,16 @@
 // =============================================================
 // CONFIGURATION
 // =============================================================
-#define WIFI_SSID "kost putra lantai 3"
-#define WIFI_PASSWORD "kostputrad24"
+struct WiFiNetwork {
+  const char *ssid;
+  const char *password;
+};
+
+WiFiNetwork networks[] = {
+    {"kost putra lantai 3", "kostputrad24"}, // Main network
+    {"mrd", "opikopi123"}                    // Mobile hotspot/backup
+};
+const int network_count = sizeof(networks) / sizeof(networks[0]);
 
 #define SUPABASE_URL "https://erdvgpmpbhmwpvorzlgv.supabase.co"
 #define SUPABASE_ANON_KEY                                                      \
@@ -93,6 +101,7 @@ String device_id = "";
 float current_temp = 0.0;
 float current_humid = 0.0;
 bool wifi_connected = false;
+bool internet_connected = false;
 
 unsigned long last_sensor_read = 0;
 unsigned long last_supabase_sync = 0;
@@ -257,6 +266,8 @@ void loop() {
   bool connected_now = (WiFi.status() == WL_CONNECTED);
   if (wifi_connected != connected_now) {
     wifi_connected = connected_now;
+    if (!wifi_connected)
+      internet_connected = false; // If WiFi dead, Internet definitely dead
     drawHeader();
   }
 }
@@ -284,9 +295,12 @@ void drawHeader() {
   tft.setFreeFont(FF_HEADER);
   tft.drawString("The Catalyst", 20, 12);
 
-  // Status indicator
-  int dotX = 460, dotY = 22;
-  tft.fillCircle(dotX, dotY, 5, wifi_connected ? C_ACCENT_GREEN : C_ACCENT_RED);
+  // Status indicator (WiFi vs Internet)
+  int dotX = 460, dotY = 18;
+  // Outer ring: WiFi status, Inner dot: Internet status
+  tft.drawCircle(dotX, dotY, 7, wifi_connected ? C_ACCENT_BLUE : C_ACCENT_RED);
+  tft.fillCircle(dotX, dotY, 4,
+                 internet_connected ? C_ACCENT_GREEN : C_ACCENT_RED);
 
   // Invalidate clock cache so drawClock() redraws after header clear
   last_time_str[0] = '\0';
@@ -529,7 +543,12 @@ void updateLCD() {
   lcd.setCursor(0, 0);
   lcd.printf("T:%.1f C H:%.1f %%", current_temp, current_humid);
   lcd.setCursor(0, 1);
-  lcd.print(wifi_connected ? "Online  " : "Offline ");
+  if (!wifi_connected)
+    lcd.print("WiFi:OFF ");
+  else if (!internet_connected)
+    lcd.print("Net:Lost ");
+  else
+    lcd.print("Online  ");
 
   // Show time on LCD too
   struct tm ti;
@@ -546,18 +565,53 @@ void connectToWiFi() {
   tft.setTextDatum(MC_DATUM);
   tft.setTextColor(C_TEXT_DARK, C_BG);
   tft.setFreeFont(FF_HEADER);
-  tft.drawString("Connecting...", 240, 150);
-  tft.setFreeFont(FF_CAPTION);
-  tft.setTextColor(C_TEXT_LIGHT, C_BG);
-  tft.drawString(WIFI_SSID, 240, 185);
+  tft.drawString("WiFi Search...", 240, 150);
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-    delay(500);
-    attempts++;
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  Serial.println("Scanning for networks...");
+  int n = WiFi.scanNetworks();
+
+  for (int i = 0; i < network_count; i++) {
+    bool found = false;
+    for (int j = 0; j < n; j++) {
+      if (WiFi.SSID(j) == networks[i].ssid) {
+        found = true;
+        break;
+      }
+    }
+
+    if (found) {
+      Serial.print("Connecting to: ");
+      Serial.println(networks[i].ssid);
+
+      tft.fillRect(0, 175, 480, 40, C_BG);
+      tft.setFreeFont(FF_CAPTION);
+      tft.setTextColor(C_TEXT_LIGHT, C_BG);
+      tft.drawString(networks[i].ssid, 240, 185);
+
+      WiFi.begin(networks[i].ssid, networks[i].password);
+
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+      }
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("\nConnected!");
+        wifi_connected = true;
+        return;
+      }
+      Serial.println("\nFailed to connect.");
+    }
   }
-  wifi_connected = (WiFi.status() == WL_CONNECTED);
+
+  wifi_connected = false;
+  Serial.println("No known networks found.");
 }
 
 void syncTime() {
@@ -690,6 +744,14 @@ String supabaseRequest(String endpoint, String method, String payload) {
   int code = (method == "POST")  ? http.POST(payload)
              : (method == "GET") ? http.GET()
                                  : http.PATCH(payload);
+
+  if (code > 0) {
+    internet_connected = true;
+  } else {
+    internet_connected = false;
+    Serial.printf("HTTP Error: %s\n", http.errorToString(code).c_str());
+  }
+
   String res = (code > 0) ? http.getString() : "";
   http.end();
   return res;
@@ -740,6 +802,8 @@ void sendSensorData() {
 void sendHealthMetrics() {
   if (device_id == "")
     return;
+
+  // 1. Send Health Metrics
   JsonDocument doc;
   doc["device_id"] = device_id;
   doc["free_heap_bytes"] = ESP.getFreeHeap();
@@ -749,4 +813,11 @@ void sendHealthMetrics() {
   String payload;
   serializeJson(doc, payload);
   supabaseRequest("/rest/v1/device_health_metrics", "POST", payload);
+
+  // 2. Update Device Heartbeat (AUTHENTIC STATUS)
+  String devicePayload = "{\"last_seen_at\": \"now()\", \"status\": "
+                         "\"online\", \"ip_address\": \"" +
+                         WiFi.localIP().toString() + "\"}";
+  supabaseRequest("/rest/v1/devices?id=eq." + device_id, "PATCH",
+                  devicePayload);
 }

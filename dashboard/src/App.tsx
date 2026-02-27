@@ -17,7 +17,6 @@ function App() {
   const [universityTasks, setUniversityTasks] = useState<BroneTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [isLive, setIsLive] = useState(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => {
@@ -79,9 +78,6 @@ function App() {
           const newReading = payload.new as SensorReading;
           setLatestReading(newReading);
           setReadings((prev) => [newReading, ...prev].slice(0, 30));
-          setIsLive(true);
-          if (liveTimeoutRef.current) clearTimeout(liveTimeoutRef.current);
-          liveTimeoutRef.current = setTimeout(() => setIsLive(false), 2000);
           checkAlerts(newReading);
         }
       )
@@ -166,6 +162,9 @@ function App() {
     { value: Math.abs(((latestReading.humidity - prevReading.humidity) / prevReading.humidity) * 100).toFixed(1) as any, isPositive: latestReading.humidity > prevReading.humidity }
     : undefined;
 
+  // Authentic Status Calculation (No Mocks)
+  const isDeviceOnline = device?.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() < 120000); // 2 minutes window
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans pb-20">
 
@@ -175,9 +174,9 @@ function App() {
           <div className="flex flex-row items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${isLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
+                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${isDeviceOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
                 <span className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
-                  {isLive ? 'Streaming live' : 'Standby'}
+                  {isDeviceOnline ? (latestReading && (Date.now() - new Date(latestReading.recorded_at).getTime() < 60000) ? 'Streaming LIVE' : 'ONLINE') : 'OFFLINE'}
                 </span>
               </div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900">
@@ -240,13 +239,13 @@ function App() {
                 </div>
                 <span className="text-sm font-semibold text-slate-500 tracking-wide">Status</span>
               </div>
-              {device?.status === 'online' && (
+              {isDeviceOnline && (
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               )}
             </div>
             <div className="mt-4">
               <div className="text-3xl font-black text-slate-900 tracking-tight leading-none">
-                {device?.status === 'online' ? "Online" : "Offline"}
+                {isDeviceOnline ? "Online" : "Offline"}
               </div>
               <div className="text-xs font-medium text-slate-400 mt-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
                 {device?.last_seen_at ?
