@@ -1,10 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { supabase } from "./lib/supabase";
-import type { Device, SensorReading, BroneTask } from "./types";
+import type { Device, SensorReading } from "./types";
 import { StatCard } from "./components/StatCard";
 import { SensorChart } from "./components/SensorChart";
 import { ComfortGauge } from "./components/ComfortGauge";
-import { AssignmentTracker } from "./components/AssignmentTracker";
+import { ScheduleTracker } from "./components/ScheduleTracker";
 import { SettingsModal, type AlertSettings } from "./components/SettingsModal";
 import { Toast, type ToastData } from "./components/Toast";
 import { Activity, Droplet, Thermometer, Wifi, RefreshCw, Smartphone, Settings, BarChart3, CloudRain, Flame } from "lucide-react";
@@ -14,9 +14,7 @@ function App() {
   const [readings, setReadings] = useState<SensorReading[]>([]);
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
-  const [universityTasks, setUniversityTasks] = useState<BroneTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tasksLoading, setTasksLoading] = useState(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [alertSettings, setAlertSettings] = useState<AlertSettings>(() => {
@@ -66,26 +64,6 @@ function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const fetchTasks = useCallback(async (triggerSync = false) => {
-    setTasksLoading(true);
-
-    if (triggerSync) {
-      try {
-        await fetch('/.netlify/functions/sync-brone');
-      } catch (e) {
-        console.error("Sync trigger failed", e);
-      }
-    }
-
-    const { data } = await supabase
-      .from("brone_tasks")
-      .select("*")
-      .order("deadline", { ascending: true });
-
-    if (data) setUniversityTasks(data);
-    setTasksLoading(false);
-  }, []);
-
   const fetchInitialData = useCallback(async () => {
     setLoading(true);
 
@@ -118,8 +96,7 @@ function App() {
     }
 
     setLoading(false);
-    fetchTasks();
-  }, [fetchTasks]);
+  }, []);
 
   useEffect(() => {
     fetchInitialData();
@@ -196,9 +173,6 @@ function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={() => fetchTasks(true)} title="Sync Brone Tasks" className="p-2.5 rounded-xl hover:bg-white hover:shadow-sm text-blue-500 transition-all duration-200 border border-transparent hover:border-blue-100">
-                <RefreshCw size={18} className={tasksLoading ? "animate-spin" : ""} />
-              </button>
               <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-all duration-200">
                 <Settings size={18} />
               </button>
@@ -358,12 +332,10 @@ function App() {
             </div>
           </div>
 
-          {/* Assignment Tracker */}
+          {/* Schedule Tracker */}
           <div className="lg:col-span-1">
-            <AssignmentTracker
-              tasks={universityTasks}
-              isLoading={tasksLoading}
-              onTaskUpdate={() => fetchTasks(false)}
+            <ScheduleTracker
+              isLoading={loading}
             />
           </div>
 

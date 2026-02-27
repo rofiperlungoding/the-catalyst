@@ -18,15 +18,16 @@ npm run lint
 ## DESCRIPTION
 The Catalyst is a high-performance IoT ecosystem designed for real-time industrial telemetry, environmental monitoring, and predictive analytics. The platform bridges the gap between hardware sensors and administrative intelligence, providing a unified dashboard for critical data visualization and asset management.
 
-### v0.6.1 — SF Pro Display & Authentic Monitoring
-The latest version introduces the **"No-Mock" Philosophy**, ensuring every status bit on the dashboard and device matches the physical reality of the connection.
+### v0.6.2 — Academic Intelligence Integration
+The latest version transforms the "Assignment Tracker" into an intelligent **Class Schedule System**, providing real-time academic situational awareness directly on the device and dashboard.
 
 ## FEATURES
+- **Academic Situational Awareness**: Integrated Class Schedule tracking replacing generic assignments. Shows today's classes, room numbers, and time ranges.
 - **Multi-Network Auto-Pilot**: Seamlessly switches between primary WiFi (e.g., Home/Office) and mobile hotspots via intelligent scanning.
 - **Authentic Heartbeat**: Real-time connection monitoring with zero-mocking. If the API or Internet is down, the system truthfully reports `OFFLINE`.
 - **Industrial Luxury UI**: Integrated SF Pro Display typography (via custom font textures) for a premium, high-density telemetry interface.
 - **Health Telemetry**: Live reporting of ESP32 heap memory, uptime, and signal strength (RSSI).
-- **Consolidated Dashboard**: Single-screen view for temperature, humidity, comfort scores, and active university task tracking (Brone Sync).
+- **Consolidated Dashboard**: Single-screen view for temperature, humidity, comfort scores, and active academic schedule tracking.
 
 ## ARCHITECTURE
 Detailed overview of the technology stack and system integration:

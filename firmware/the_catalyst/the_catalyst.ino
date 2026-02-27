@@ -112,17 +112,19 @@ unsigned long last_clock_update = 0;
 bool need_full_redraw = true;
 bool need_clock_redraw = false;
 
-struct UniversityTask {
+struct ScheduleItem {
   String id;
-  String course_name;
-  String task_title;
-  time_t deadline;
+  String subject;
+  String start_time;
+  String end_time;
+  String room;
   bool active = false;
 };
 
-UniversityTask tasks[2];
-int active_tasks_count = 0;
-unsigned long last_university_sync = 0;
+ScheduleItem schedule[4];
+int active_schedule_count = 0;
+unsigned long last_schedule_sync = 0;
+#define SCHEDULE_SYNC_INTERVAL 3600000 // Every 1 hour
 
 // Clock cache (avoid redrawing if time hasn't changed)
 char last_time_str[6] = "";
@@ -155,7 +157,8 @@ void sendSensorData();
 void sendHealthMetrics();
 void readSensor();
 void updateLCD();
-void fetchUniversityTasks();
+void fetchClassSchedule();
+void drawClassSchedule();
 String supabaseRequest(String endpoint, String method, String payload);
 
 // =============================================================
@@ -163,7 +166,7 @@ String supabaseRequest(String endpoint, String method, String payload);
 // =============================================================
 void setup() {
   Serial.begin(115200);
-  Serial.println("\nTHE CATALYST v0.6.0 — SF Pro Display");
+  Serial.println("\nTHE CATALYST v0.6.2 — SF Pro Display");
 
   // Display
   tft.init();
@@ -177,7 +180,7 @@ void setup() {
   tft.drawString("The Catalyst", 240, 130);
   tft.setFreeFont(FF_CAPTION);
   tft.setTextColor(C_TEXT_LIGHT, C_BG);
-  tft.drawString("v0.6.0  //  SF Pro Display", 240, 175);
+  tft.drawString("v0.6.2  //  SF Pro Display", 240, 175);
   tft.setFreeFont(FF_LABEL);
   tft.setTextColor(C_TEXT_MUTED, C_BG);
   tft.drawString("Initializing...", 240, 210);
@@ -188,7 +191,7 @@ void setup() {
   lcd.backlight();
   lcd.print("The Catalyst");
   lcd.setCursor(0, 1);
-  lcd.print("v0.6.0 Init...");
+  lcd.print("v0.6.2 Init...");
 
   // Sensor
   dht.begin();
@@ -253,12 +256,11 @@ void loop() {
     last_health_report = now;
   }
 
-  // 7. University Tasks Sync
-  if (wifi_connected &&
-      (now - last_university_sync > UNIVERSITY_SYNC_INTERVAL ||
-       last_university_sync == 0)) {
-    fetchUniversityTasks();
-    last_university_sync = now;
+  // 7. Class Schedule Sync
+  if (wifi_connected && (now - last_schedule_sync > SCHEDULE_SYNC_INTERVAL ||
+                         last_schedule_sync == 0)) {
+    fetchClassSchedule();
+    last_schedule_sync = now;
     need_full_redraw = true;
   }
 
@@ -280,7 +282,7 @@ void drawFullDashboard() {
   drawHeader();
   drawClock();
   drawMetricCards();
-  drawUniversityTasks();
+  drawClassSchedule();
   drawGraphCards();
   drawFooter();
 }
@@ -620,15 +622,42 @@ void syncTime() {
   getLocalTime(&ti, 5000);
 }
 
-// --- UNIVERSITY TASKS ---
-void fetchUniversityTasks() {
+// --- CLASS SCHEDULE ---
+String getIndoDayName(int wday) {
+  switch (wday) {
+  case 0:
+    return "Minggu";
+  case 1:
+    return "Senin";
+  case 2:
+    return "Selasa";
+  case 3:
+    return "Rabu";
+  case 4:
+    return "Kamis";
+  case 5:
+    return "Jumat";
+  case 6:
+    return "Sabtu";
+  default:
+    return "";
+  }
+}
+
+void fetchClassSchedule() {
   if (!wifi_connected)
     return;
 
-  // Fetch 2 pending tasks ordered by deadline
-  String query = "/rest/v1/"
-                 "brone_tasks?status=eq.pending&select=id,course_name,task_"
-                 "title,deadline&order=deadline.asc&limit=2";
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo))
+    return;
+  String today = getIndoDayName(timeinfo.tm_wday);
+
+  // Fetch today's schedule
+  String query = "/rest/v1/class_schedule?day_of_week=eq." + today +
+                 "&select=id,subject,start_time,end_time,room&order=start_time."
+                 "asc&limit=4";
+
   String response = supabaseRequest(query, "GET", "");
 
   if (response == "")
@@ -642,91 +671,59 @@ void fetchUniversityTasks() {
     return;
   }
 
-  active_tasks_count = doc.size();
-  for (int i = 0; i < active_tasks_count; i++) {
-    tasks[i].id = doc[i]["id"].as<String>();
-    tasks[i].course_name = doc[i]["course_name"].as<String>();
-    tasks[i].task_title = doc[i]["task_title"].as<String>();
-
-    // Simple ISO8601 parsing (YYYY-MM-DDTHH:MM:SS)
-    const char *dStr = doc[i]["deadline"];
-    struct tm tm;
-    memset(&tm, 0, sizeof(struct tm));
-    if (strptime(dStr, "%Y-%m-%dT%H:%M:%S", &tm)) {
-      tasks[i].deadline = mktime(&tm);
-    }
-    tasks[i].active = true;
+  active_schedule_count = doc.size();
+  for (int i = 0; i < active_schedule_count; i++) {
+    schedule[i].id = doc[i]["id"].as<String>();
+    schedule[i].subject = doc[i]["subject"].as<String>();
+    schedule[i].start_time = doc[i]["start_time"].as<String>();
+    schedule[i].end_time = doc[i]["end_time"].as<String>();
+    schedule[i].room = doc[i]["room"].as<String>();
+    schedule[i].active = true;
   }
 }
 
-void drawUniversityTasks() {
+void drawClassSchedule() {
   int tx = 20, ty = 153, tw = 440, th = 85;
   drawCard(tx, ty, tw, th);
 
   tft.setTextDatum(TL_DATUM);
   tft.setTextColor(C_TEXT_DARK, C_CARD_BG);
   tft.setFreeFont(FF_BODY);
-  tft.drawString("Assignments", tx + 15, ty + 10);
 
-  if (active_tasks_count == 0) {
+  struct tm ti;
+  getLocalTime(&ti);
+  String headerText = "Jadwal " + getIndoDayName(ti.tm_wday);
+  tft.drawString(headerText, tx + 15, ty + 10);
+
+  if (active_schedule_count == 0) {
     tft.setTextColor(C_TEXT_MUTED, C_CARD_BG);
     tft.setFreeFont(FF_LABEL);
-    tft.drawString("All tasks completed!", tx + 15, ty + 40);
+    tft.drawString("No classes today! 😴", tx + 15, ty + 40);
     return;
   }
 
-  time_t now;
-  time(&now);
+  for (int i = 0; i < min(active_schedule_count, 3); i++) {
+    int rowY = ty + 32 + (i * 18); // Tighter spacing for schedule
 
-  for (int i = 0; i < active_tasks_count; i++) {
-    int rowY = ty + 32 + (i * 24);
-
-    // Course (Label)
-    tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
-    tft.setFreeFont(FF_CAPTION);
-    String course = tasks[i].course_name;
-    if (course.length() > 20)
-      course = course.substring(0, 17) + "...";
-    tft.drawString(course, tx + 15, rowY);
-
-    // Title (Label Bold)
+    // Subject
     tft.setTextColor(C_TEXT_DARK, C_CARD_BG);
-    tft.setFreeFont(FF_LABEL);
-    String title = tasks[i].task_title;
-    if (title.length() > 30)
-      title = title.substring(0, 27) + "...";
-    tft.drawString(title, tx + 15, rowY + 10);
-
-    // Countdown
-    long diff = difftime(tasks[i].deadline, now);
-    String countdown;
-    uint16_t color = C_TEXT_LIGHT;
-
-    if (diff < 0) {
-      countdown = "Expired";
-      color = C_ACCENT_RED;
-    } else {
-      long d = diff / 86400;
-      long h = (diff % 86400) / 3600;
-      long m = (diff % 3600) / 60;
-
-      if (d > 0)
-        countdown = String(d) + "d " + String(h) + "h rem";
-      else if (h > 0)
-        countdown = String(h) + "h " + String(m) + "m rem";
-      else
-        countdown = String(m) + "m remaining";
-
-      if (diff < 86400)
-        color = C_ACCENT_RED; // < 24h
-      else if (diff < 172800)
-        color = C_ACCENT_CYAN; // < 48h
-    }
-
-    tft.setTextDatum(TR_DATUM);
-    tft.setTextColor(color, C_CARD_BG);
     tft.setFreeFont(FF_CAPTION);
-    tft.drawString(countdown, tx + tw - 15, rowY + 10);
+    String sub = schedule[i].subject;
+    if (sub.length() > 25)
+      sub = sub.substring(0, 22) + "...";
+    tft.drawString(sub, tx + 15, rowY);
+
+    // Time
+    tft.setTextDatum(TC_DATUM);
+    tft.setTextColor(C_TEXT_LIGHT, C_CARD_BG);
+    String timeRange = schedule[i].start_time.substring(0, 5) + "-" +
+                       schedule[i].end_time.substring(0, 5);
+    tft.drawString(timeRange, tx + (tw / 2) + 60, rowY);
+
+    // Room
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(C_ACCENT_BLUE, C_CARD_BG);
+    tft.drawString(schedule[i].room, tx + tw - 15, rowY);
   }
 }
 

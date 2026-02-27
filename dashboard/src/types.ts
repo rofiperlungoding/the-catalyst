@@ -36,3 +36,13 @@ export type BroneTask = {
     status: 'pending' | 'completed';
     updated_at: string;
 };
+
+export type ClassSchedule = {
+    id: string;
+    day_of_week: string;
+    subject: string;
+    start_time: string;
+    end_time: string;
+    room: string;
+    created_at: string;
+};
