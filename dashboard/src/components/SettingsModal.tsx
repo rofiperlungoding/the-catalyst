@@ -37,14 +37,14 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200 p-4">
-            <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl dark:shadow-black/50 border border-transparent dark:border-slate-800 animate-in zoom-in-95 duration-200 overflow-hidden">
 
                 {/* Header */}
-                <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-                    <h2 className="text-lg font-bold text-slate-900">Configure Alerts</h2>
+                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30 transition-colors duration-300">
+                    <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Configure Alerts</h2>
                     <button
                         onClick={onClose}
-                        className="p-2 -mr-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+                        className="p-2 -mr-2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-all"
                     >
                         <X size={20} />
                     </button>
@@ -54,7 +54,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                 <div className="p-6 space-y-6">
                     {/* Temperature */}
                     <div className="space-y-3">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span> Temperature Thresholds (°C)
                         </label>
                         <div className="grid grid-cols-2 gap-4">
@@ -64,7 +64,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                                     type="number"
                                     value={settings.tempMin}
                                     onChange={(e) => handleChange("tempMin", Number(e.target.value))}
-                                    className="w-full bg-slate-50 border border-slate-200 hover:border-blue-400 focus:border-blue-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 font-mono-nums focus:ring-4 focus:ring-blue-500/10 focus:outline-none transition-all"
+                                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:border-blue-400 dark:hover:border-blue-500/80 focus:border-blue-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 font-mono-nums focus:ring-4 focus:ring-blue-500/10 focus:outline-none transition-all"
                                 />
                             </div>
                             <div className="space-y-1.5">
@@ -73,7 +73,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                                     type="number"
                                     value={settings.tempMax}
                                     onChange={(e) => handleChange("tempMax", Number(e.target.value))}
-                                    className="w-full bg-slate-50 border border-slate-200 hover:border-red-400 focus:border-red-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 font-mono-nums focus:ring-4 focus:ring-red-500/10 focus:outline-none transition-all"
+                                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:border-red-400 dark:hover:border-red-500/80 focus:border-red-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 font-mono-nums focus:ring-4 focus:ring-red-500/10 focus:outline-none transition-all"
                                 />
                             </div>
                         </div>
@@ -81,7 +81,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
 
                     {/* Humidity */}
                     <div className="space-y-3">
-                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-cyan-500"></span> Humidity Thresholds (%)
                         </label>
                         <div className="grid grid-cols-2 gap-4">
@@ -91,7 +91,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                                     type="number"
                                     value={settings.humidMin}
                                     onChange={(e) => handleChange("humidMin", Number(e.target.value))}
-                                    className="w-full bg-slate-50 border border-slate-200 hover:border-cyan-400 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 font-mono-nums focus:ring-4 focus:ring-cyan-500/10 focus:outline-none transition-all"
+                                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:border-cyan-400 dark:hover:border-cyan-500/80 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 font-mono-nums focus:ring-4 focus:ring-cyan-500/10 focus:outline-none transition-all"
                                 />
                             </div>
                             <div className="space-y-1.5">
@@ -100,7 +100,7 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                                     type="number"
                                     value={settings.humidMax}
                                     onChange={(e) => handleChange("humidMax", Number(e.target.value))}
-                                    className="w-full bg-slate-50 border border-slate-200 hover:border-cyan-400 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 font-mono-nums focus:ring-4 focus:ring-cyan-500/10 focus:outline-none transition-all"
+                                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/80 hover:border-cyan-400 dark:hover:border-cyan-500/80 focus:border-cyan-500 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-slate-100 font-mono-nums focus:ring-4 focus:ring-cyan-500/10 focus:outline-none transition-all"
                                 />
                             </div>
                         </div>
@@ -108,10 +108,10 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
 
                     {/* Notifications Toggle */}
                     <div className="flex items-center justify-between pt-2 px-1">
-                        <span className="text-sm font-semibold text-slate-700">Enable Alert Notifications</span>
+                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Enable Alert Notifications</span>
                         <button
                             onClick={() => handleChange("notificationsEnabled", !settings.notificationsEnabled)}
-                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-500/20 ${settings.notificationsEnabled ? "bg-emerald-500" : "bg-slate-200"
+                            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-4 focus:ring-emerald-500/20 ${settings.notificationsEnabled ? "bg-emerald-500 dark:bg-emerald-600" : "bg-slate-200 dark:bg-slate-700"
                                 }`}
                         >
                             <span
@@ -123,10 +123,10 @@ export function SettingsModal({ isOpen, onClose, onSave, currentSettings }: Sett
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/80 flex justify-end gap-3 transition-colors duration-300">
                     <button
                         onClick={onClose}
-                        className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 rounded-xl transition-all shadow-sm"
+                        className="px-5 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-all shadow-sm"
                     >
                         Cancel
                     </button>

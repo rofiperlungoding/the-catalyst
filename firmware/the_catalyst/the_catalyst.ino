@@ -76,16 +76,36 @@ const int network_count = sizeof(networks) / sizeof(networks[0]);
 // =============================================================
 // COLOR PALETTE (WCAG AA)
 // =============================================================
-#define C_BG 0xF7BE           // #F3F4F6
-#define C_CARD_BG 0xFFFF      // #FFFFFF
-#define C_TEXT_DARK 0x10C5    // #111827 (Gray-900)
-#define C_TEXT_LIGHT 0x4AA1   // #4B5563 (Gray-600)  [7:1]
-#define C_TEXT_MUTED 0x8C71   // #8B8E94 (Gray-400)
-#define C_ACCENT_BLUE 0x233D  // #2563EB (Blue-600)
-#define C_ACCENT_CYAN 0x0496  // #0891B2 (Cyan-600)
-#define C_ACCENT_GREEN 0x04B5 // #059669 (Green-600)
-#define C_ACCENT_RED 0xD924   // #DC2626 (Red-600)
-#define C_GRID_LIGHT 0xE73C   // #E5E7EB
+uint16_t C_BG = 0xF7BE;           // #F3F4F6
+uint16_t C_CARD_BG = 0xFFFF;      // #FFFFFF
+uint16_t C_TEXT_DARK = 0x10C5;    // #111827 (Gray-900)
+uint16_t C_TEXT_LIGHT = 0x4AA1;   // #4B5563 (Gray-600)  [7:1]
+uint16_t C_TEXT_MUTED = 0x8C71;   // #8B8E94 (Gray-400)
+uint16_t C_ACCENT_BLUE = 0x233D;  // #2563EB (Blue-600)
+uint16_t C_ACCENT_CYAN = 0x0496;  // #0891B2 (Cyan-600)
+uint16_t C_ACCENT_GREEN = 0x04B5; // #059669 (Green-600)
+uint16_t C_ACCENT_RED = 0xD924;   // #DC2626 (Red-600)
+uint16_t C_GRID_LIGHT = 0xE73C;   // #E5E7EB
+
+bool is_dark_mode = false;
+
+void applyTheme() {
+  if (is_dark_mode) {
+    C_BG = 0x0821;         // slate-900
+    C_CARD_BG = 0x18C3;    // slate-800
+    C_TEXT_DARK = 0xFFFF;  // white
+    C_TEXT_LIGHT = 0xBDF7; // slate-300
+    C_TEXT_MUTED = 0x94B2; // slate-400
+    C_GRID_LIGHT = 0x31A6; // slate-700
+  } else {
+    C_BG = 0xF7BE;         // gray-100
+    C_CARD_BG = 0xFFFF;    // white
+    C_TEXT_DARK = 0x10C5;  // gray-900
+    C_TEXT_LIGHT = 0x4AA1; // gray-600
+    C_TEXT_MUTED = 0x8C71; // gray-400
+    C_GRID_LIGHT = 0xE73C; // gray-200
+  }
+}
 
 // =============================================================
 // OBJECTS
@@ -205,6 +225,11 @@ void setup() {
     registerDevice();
 
   // Draw initial dashboard
+  struct tm ti;
+  if (getLocalTime(&ti, 100)) {
+    is_dark_mode = (ti.tm_hour >= 18 || ti.tm_hour < 6);
+  }
+  applyTheme();
   tft.fillScreen(C_BG);
   need_full_redraw = true;
 }
@@ -226,6 +251,17 @@ void loop() {
   if (now - last_clock_update > CLOCK_UPDATE_INTERVAL) {
     last_clock_update = now;
     need_clock_redraw = true;
+
+    struct tm ti;
+    if (getLocalTime(&ti, 50)) {
+      bool should_be_dark = (ti.tm_hour >= 18 || ti.tm_hour < 6);
+      if (should_be_dark != is_dark_mode) {
+        is_dark_mode = should_be_dark;
+        applyTheme();
+        tft.fillScreen(C_BG);
+        need_full_redraw = true;
+      }
+    }
   }
 
   // 3. Redraw dashboard

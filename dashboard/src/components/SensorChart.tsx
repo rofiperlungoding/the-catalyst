@@ -25,7 +25,7 @@ export const SensorChart = memo(function SensorChart({ data, dataKey, color = "#
         <div className={cn("w-full h-full", className)} style={{ height }}>
             {title && (
                 <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-base font-semibold text-slate-900">{title}</h3>
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100 transition-colors">{title}</h3>
                 </div>
             )}
             <ResponsiveContainer width="100%" height="100%">
@@ -56,13 +56,13 @@ export const SensorChart = memo(function SensorChart({ data, dataKey, color = "#
                     />
                     <Tooltip
                         contentStyle={{
-                            backgroundColor: "rgba(255, 255, 255, 0.95)",
-                            borderColor: "#e2e8f0",
+                            backgroundColor: "hsl(var(--card))",
+                            borderColor: "hsl(var(--border))",
                             borderRadius: "12px",
                             boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                             padding: "8px 12px",
                         }}
-                        itemStyle={{ color: "#0f172a", fontWeight: 700, fontSize: "14px", fontFamily: '"SF Pro Display", sans-serif' }}
+                        itemStyle={{ color: "hsl(var(--foreground))", fontWeight: 700, fontSize: "14px", fontFamily: '"SF Pro Display", sans-serif' }}
                         labelStyle={{ display: "none" }}
                         formatter={(value: number | undefined) => [`${(value ?? 0).toFixed(1)}${unit || ""}`, ""]}
                         cursor={{ stroke: color, strokeWidth: 2, strokeDasharray: "4 4" }}

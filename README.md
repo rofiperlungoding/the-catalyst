@@ -18,10 +18,11 @@ npm run lint
 ## DESCRIPTION
 The Catalyst is a high-performance IoT ecosystem designed for real-time industrial telemetry, environmental monitoring, and predictive analytics. The platform bridges the gap between hardware sensors and administrative intelligence, providing a unified dashboard for critical data visualization and asset management.
 
-### v0.6.2 — Academic Intelligence Integration
-The latest version transforms the "Assignment Tracker" into an intelligent **Class Schedule System**, providing real-time academic situational awareness directly on the device and dashboard.
+### v0.7.0 — Adaptive Dark Mode
+The latest version introduces an intelligent, autonomous Dark Mode system. Borrowing UX patterns from navigation systems, the dashboard and ESP32 display both automatically transition into a high-contrast dark theme between 18:00 and 06:00 without requiring user intervention.
 
 ## FEATURES
+- **Adaptive Dark Mode**: Autonomous UI adapting based on local time (18:00 to 06:00). Seamlessly applied to both the web dashboard and the physical ESP32 TFT display.
 - **Academic Situational Awareness**: Integrated Class Schedule tracking replacing generic assignments. Shows today's classes, room numbers, and time ranges.
 - **Multi-Network Auto-Pilot**: Seamlessly switches between primary WiFi (e.g., Home/Office) and mobile hotspots via intelligent scanning.
 - **Authentic Heartbeat**: Real-time connection monitoring with zero-mocking. If the API or Internet is down, the system truthfully reports `OFFLINE`.

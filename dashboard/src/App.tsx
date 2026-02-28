@@ -150,21 +150,36 @@ function App() {
   // Authentic Status Calculation (No Mocks)
   const isDeviceOnline = device?.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() < 120000); // 2 minutes window
 
+  useEffect(() => {
+    const checkDark = () => {
+      const h = new Date().getHours();
+      const dark = h >= 18 || h < 6;
+      if (dark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+    checkDark();
+    const intv = setInterval(checkDark, 60000); // Check every minute
+    return () => clearInterval(intv);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-slate-900 font-sans pb-20">
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors duration-700">
 
       {/* ─── Sticky Header ─── */}
-      <div className="sticky top-0 z-50 bg-[#F8F9FA]/95 backdrop-blur-sm border-b border-slate-200/60">
+      <div className="sticky top-0 z-50 bg-[#F8F9FA]/95 dark:bg-slate-950/95 backdrop-blur-sm border-b border-slate-200/60 dark:border-slate-800/60 transition-colors duration-700">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex flex-row items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${isDeviceOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300'}`}></span>
-                <span className="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">
+                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${isDeviceOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`}></span>
+                <span className="text-[10px] font-bold tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase">
                   {isDeviceOnline ? (latestReading && (Date.now() - new Date(latestReading.recorded_at).getTime() < 60000) ? 'Streaming LIVE' : 'ONLINE') : 'OFFLINE'}
                 </span>
               </div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900">
+              <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white transition-colors duration-700">
                 The Catalyst
               </h1>
               <p className="text-xs font-medium text-slate-400 mt-0.5">
@@ -173,10 +188,10 @@ function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-all duration-200">
+              <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all duration-200">
                 <Settings size={18} />
               </button>
-              <button onClick={fetchInitialData} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-all duration-200">
+              <button onClick={fetchInitialData} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all duration-200">
                 <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
               </button>
             </div>
@@ -213,20 +228,20 @@ function App() {
           />
 
           {/* ─── Device Status Card ─── */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 ease-out flex flex-col justify-between">
+          <div className="bg-white dark:bg-slate-900/50 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800/80 hover:shadow-md hover:-translate-y-0.5 transition-all duration-500 ease-out flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-full bg-purple-50 text-purple-500">
+                <div className="p-2.5 rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 transition-colors">
                   <Wifi size={20} strokeWidth={2.5} />
                 </div>
-                <span className="text-sm font-semibold text-slate-500 tracking-wide">Status</span>
+                <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 tracking-wide transition-colors">Status</span>
               </div>
               {isDeviceOnline && (
                 <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
               )}
             </div>
             <div className="mt-4">
-              <div className="text-3xl font-black text-slate-900 tracking-tight leading-none">
+              <div className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none transition-colors">
                 {isDeviceOnline ? "Online" : "Offline"}
               </div>
               <div className="text-xs font-medium text-slate-400 mt-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -242,13 +257,13 @@ function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
 
           {/* Temperature Chart */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 rounded-2xl p-8 shadow-sm border border-slate-100 dark:border-slate-800/80 transition-colors duration-500">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight">Temperature Trend</h3>
+                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Temperature Trend</h3>
                 <p className="text-slate-400 text-sm font-medium mt-0.5">Real-time sensor readings</p>
               </div>
-              <div className="bg-blue-50 text-blue-500 p-2.5 rounded-xl">
+              <div className="bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 p-2.5 rounded-xl transition-colors">
                 <BarChart3 size={18} />
               </div>
             </div>
@@ -263,7 +278,7 @@ function App() {
           </div>
 
           {/* Comfort Gauge */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+          <div className="bg-white dark:bg-slate-900/50 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800/80 flex flex-col items-center justify-center transition-colors duration-500">
             <ComfortGauge
               score={latestReading?.comfort_score ?? 0}
               label={(latestReading?.comfort_lvl ?? "--").replace("_", " ")}
@@ -271,13 +286,13 @@ function App() {
           </div>
 
           {/* Humidity Chart */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900/50 rounded-2xl p-8 shadow-sm border border-slate-100 dark:border-slate-800/80 transition-colors duration-500">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h3 className="text-lg font-black text-slate-900 tracking-tight">Humidity Analysis</h3>
+                <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight transition-colors">Humidity Analysis</h3>
                 <p className="text-slate-400 text-sm font-medium mt-0.5">Ambient moisture levels</p>
               </div>
-              <div className="bg-cyan-50 text-cyan-500 p-2.5 rounded-xl">
+              <div className="bg-cyan-50 dark:bg-cyan-900/30 text-cyan-500 dark:text-cyan-400 p-2.5 rounded-xl transition-colors">
                 <Droplet size={18} />
               </div>
             </div>
@@ -292,40 +307,40 @@ function App() {
           </div>
 
           {/* Device Details */}
-          <div className="bg-white rounded-2xl p-8 shadow-sm border border-slate-100">
-            <h3 className="text-base font-black text-slate-900 mb-6 flex items-center gap-2.5 tracking-tight">
-              <Smartphone className="text-slate-400" size={18} /> Device Details
+          <div className="bg-white dark:bg-slate-900/50 rounded-2xl p-8 shadow-sm border border-slate-100 dark:border-slate-800/80 transition-colors duration-500">
+            <h3 className="text-base font-black text-slate-900 dark:text-slate-100 mb-6 flex items-center gap-2.5 tracking-tight transition-colors">
+              <Smartphone className="text-slate-400 dark:text-slate-500" size={18} /> Device Details
             </h3>
 
             <div className="space-y-0 text-sm">
-              <div className="flex justify-between items-center py-3 border-b border-slate-50">
-                <span className="font-medium text-slate-500">Name</span>
-                <span className="font-bold text-slate-800">{device?.device_name}</span>
+              <div className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-800/50">
+                <span className="font-medium text-slate-500 dark:text-slate-400">Name</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{device?.device_name}</span>
               </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-50">
-                <span className="font-medium text-slate-500">IP Address</span>
-                <span className="font-mono text-xs font-bold text-slate-600 bg-slate-50 px-2.5 py-1 rounded-lg font-mono-nums">{device?.ip_address}</span>
+              <div className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-800/50">
+                <span className="font-medium text-slate-500 dark:text-slate-400">IP Address</span>
+                <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/50 px-2.5 py-1 rounded-lg font-mono-nums">{device?.ip_address}</span>
               </div>
-              <div className="flex justify-between items-center py-3 border-b border-slate-50">
-                <span className="font-medium text-slate-500">Last Reading</span>
-                <span className="font-bold text-slate-800 text-xs">
+              <div className="flex justify-between items-center py-3 border-b border-slate-50 dark:border-slate-800/50">
+                <span className="font-medium text-slate-500 dark:text-slate-400">Last Reading</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
                   {latestReading?.recorded_at ? formatDistanceToNow(new Date(latestReading.recorded_at), { addSuffix: true }) : "--"}
                 </span>
               </div>
 
               <div className="pt-5 grid grid-cols-2 gap-5">
                 <div className="flex items-start gap-2.5">
-                  <Flame size={16} className="text-orange-400 mt-0.5" />
+                  <Flame size={16} className="text-orange-400 dark:text-orange-500 mt-0.5" />
                   <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Heat Index</span>
-                    <span className="text-lg font-black text-slate-900 font-mono-nums">{latestReading?.heat_index?.toFixed(1) || "--"}°</span>
+                    <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Heat Index</span>
+                    <span className="text-lg font-black text-slate-900 dark:text-slate-100 font-mono-nums">{latestReading?.heat_index?.toFixed(1) || "--"}°</span>
                   </div>
                 </div>
                 <div className="flex items-start gap-2.5">
-                  <Droplet size={16} className="text-blue-400 mt-0.5" />
+                  <Droplet size={16} className="text-blue-400 dark:text-blue-500 mt-0.5" />
                   <div>
-                    <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dew Point</span>
-                    <span className="text-lg font-black text-slate-900 font-mono-nums">{latestReading?.dew_point?.toFixed(1) || "--"}°</span>
+                    <span className="block text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">Dew Point</span>
+                    <span className="text-lg font-black text-slate-900 dark:text-slate-100 font-mono-nums">{latestReading?.dew_point?.toFixed(1) || "--"}°</span>
                   </div>
                 </div>
               </div>
