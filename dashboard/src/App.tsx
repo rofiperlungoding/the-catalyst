@@ -9,6 +9,7 @@ import { SettingsModal, type AlertSettings } from "./components/SettingsModal";
 import { Toast, type ToastData } from "./components/Toast";
 import { Activity, Droplet, Thermometer, Wifi, RefreshCw, Smartphone, Settings, BarChart3, CloudRain, Flame } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { cn } from "./lib/utils";
 
 function App() {
   const [readings, setReadings] = useState<SensorReading[]>([]);
@@ -55,10 +56,10 @@ function App() {
     if (alertTriggered) lastAlertTimeRef.current = now;
   }, [alertSettings]);
 
-  const addToast = (type: ToastData["type"], title: string, message?: string) => {
+  const addToast = useCallback((type: ToastData["type"], title: string, message?: string) => {
     const id = Math.random().toString(36).substring(7);
     setToasts((prev) => [...prev, { id, type, title, message }]);
-  };
+  }, []);
 
   const dismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -126,17 +127,17 @@ function App() {
       )
       .subscribe();
 
-    const interval = setInterval(() => {
-      setDevice(d => d ? { ...d } : null);
-    }, 60000);
+    const timer = setInterval(() => setCurrentTime(Date.now()), 10000);
 
     return () => {
       readingSubscription.unsubscribe();
       deviceSubscription.unsubscribe();
-      clearInterval(interval);
+      clearInterval(timer);
       if (liveTimeoutRef.current) clearTimeout(liveTimeoutRef.current);
     };
   }, [alertSettings, checkAlerts, fetchInitialData]);
+
+  const [currentTime, setCurrentTime] = useState(Date.now());
 
   const prevReading = readings.length > 1 ? readings[1] : null;
   const tempTrend = prevReading && latestReading ?
@@ -148,7 +149,27 @@ function App() {
     : undefined;
 
   // Authentic Status Calculation (No Mocks)
-  const isDeviceOnline = device?.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() < 120000); // 2 minutes window
+  const isDeviceOnline = !!device?.last_seen_at && (currentTime - new Date(device.last_seen_at).getTime() < 120000); // 2 minutes window
+  const isDataStale = !!latestReading?.recorded_at && (currentTime - new Date(latestReading.recorded_at).getTime() > 180000); // 3 minutes without data
+
+  const prevOnline = useRef<boolean | null>(null);
+  const prevStale = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (prevOnline.current === true && !isDeviceOnline) {
+      addToast("error", "System Offline", "The ESP32 has disconnected from the heartbeat server.");
+    } else if (prevOnline.current === false && isDeviceOnline) {
+      addToast("success", "System Online", "The ESP32 has re-established heartbeat.");
+    }
+    prevOnline.current = isDeviceOnline;
+
+    if (prevStale.current === false && isDataStale) {
+      addToast("warning", "Telemetry Lost", "No data packets received for 3 minutes.");
+    } else if (prevStale.current === true && !isDataStale) {
+      addToast("success", "Telemetry Resumed", "Receiving real-time data packets.");
+    }
+    prevStale.current = isDataStale;
+  }, [isDeviceOnline, isDataStale, addToast]);
 
   useEffect(() => {
     const checkDark = () => {
@@ -174,9 +195,9 @@ function App() {
           <div className="flex flex-row items-center justify-between gap-6">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${isDeviceOnline ? 'bg-emerald-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`}></span>
+                <span className={`inline-block h-2 w-2 rounded-full transition-colors duration-300 ${!isDeviceOnline ? 'bg-slate-300 dark:bg-slate-700' : isDataStale ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse'}`}></span>
                 <span className="text-[10px] font-bold tracking-[0.2em] text-slate-400 dark:text-slate-500 uppercase">
-                  {isDeviceOnline ? (latestReading && (Date.now() - new Date(latestReading.recorded_at).getTime() < 60000) ? 'Streaming LIVE' : 'ONLINE') : 'OFFLINE'}
+                  {!isDeviceOnline ? 'OFFLINE' : isDataStale ? 'STALE DATA' : 'STREAMING LIVE'}
                 </span>
               </div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white transition-colors duration-700">
@@ -231,23 +252,25 @@ function App() {
           <div className="bg-white dark:bg-slate-900/50 rounded-2xl p-6 shadow-sm border border-slate-100 dark:border-slate-800/80 hover:shadow-md hover:-translate-y-0.5 transition-all duration-500 ease-out flex flex-col justify-between">
             <div className="flex justify-between items-start">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-full bg-purple-50 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 transition-colors">
+                <div className={cn("p-2.5 rounded-full transition-colors",
+                  !isDeviceOnline ? "bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500" :
+                    isDataStale ? "bg-amber-50 dark:bg-amber-900/30 text-amber-500 dark:text-amber-400" :
+                      "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-500 dark:text-emerald-400"
+                )}>
                   <Wifi size={20} strokeWidth={2.5} />
                 </div>
-                <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 tracking-wide transition-colors">Status</span>
+                <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 tracking-wide transition-colors">Network Heartbeat</span>
               </div>
-              {isDeviceOnline && (
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              )}
+              <span className={cn("inline-block h-2.5 w-2.5 rounded-full", !isDeviceOnline ? 'bg-slate-300 dark:bg-slate-700' : isDataStale ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 animate-pulse')}></span>
             </div>
             <div className="mt-4">
               <div className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none transition-colors">
-                {isDeviceOnline ? "Online" : "Offline"}
+                {!isDeviceOnline ? "Offline" : isDataStale ? "Interrupted" : "Online"}
               </div>
               <div className="text-xs font-medium text-slate-400 mt-1.5 whitespace-nowrap overflow-hidden text-ellipsis">
                 {device?.last_seen_at ?
-                  `Last seen ${formatDistanceToNow(new Date(device.last_seen_at), { addSuffix: true })}`
-                  : "Unknown"}
+                  `Heartbeat ${formatDistanceToNow(new Date(device.last_seen_at), { addSuffix: true })}`
+                  : "Unknown Status"}
               </div>
             </div>
           </div>
